@@ -31,7 +31,7 @@ var cfg = cmdlineArgs{
 	Height:  500,
 	Rows:    100,
 	Columns: 100,
-	Seed:    time.Now().UnixNano(),
+	Seed:    0,
 	Border:  false,
 }
 
@@ -90,8 +90,14 @@ func (g *LifeGame) cleanup() {
 
 // InitializeCells resets the world to a random state
 func (g *LifeGame) InitializeCells() {
-	log.Printf("seed = %d\n", cfg.Seed)
-	rand.Seed(time.Now().UnixNano())
+	if cfg.Seed == 0 {
+		seed := time.Now().UnixNano()
+		log.Printf("seed = %d\n", cfg.Seed)
+		rand.Seed(seed)
+	} else {
+		log.Printf("seed = %d\n", cfg.Seed)
+		rand.Seed(cfg.Seed)
+	}
 
 	g.age = 0
 	g.cells = make([][]*Cell, cfg.Rows, cfg.Rows)
@@ -263,7 +269,10 @@ func (g *LifeGame) Run() {
 						break
 					case sdl.K_SPACE:
 						g.pause = !g.pause
+					case sdl.K_r:
+						g.InitializeCells()
 					}
+
 				}
 			case *sdl.MouseButtonEvent:
 				if t.GetType() == sdl.MOUSEBUTTONDOWN {
