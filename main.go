@@ -213,8 +213,8 @@ func (g *LifeGame) UpdateCell(x, y int, erase bool) {
 	g.renderer.Present()
 }
 
-// NextTic executes the next screen of the game
-func (g *LifeGame) NextTic() {
+// NextFrame executes the next screen of the game
+func (g *LifeGame) NextFrame() {
 	if g.pause {
 		return
 	}
@@ -244,6 +244,7 @@ func (g *LifeGame) NextTic() {
 // Run executes the main loop of the game
 // it handles user input and updating the display at the selected update rate
 func (g *LifeGame) Run() {
+	fpsTime := sdl.GetTicks()
 	g.Draw()
 
 	running := true
@@ -270,7 +271,10 @@ func (g *LifeGame) Run() {
 				}
 			}
 		}
-		g.NextTic()
+		if sdl.GetTicks() > fpsTime+(1000/fps) {
+			g.NextFrame()
+			fpsTime = sdl.GetTicks()
+		}
 	}
 }
 
