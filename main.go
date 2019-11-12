@@ -92,7 +92,7 @@ func (g *LifeGame) cleanup() {
 func (g *LifeGame) InitializeCells() {
 	if cfg.Seed == 0 {
 		seed := time.Now().UnixNano()
-		log.Printf("seed = %d\n", cfg.Seed)
+		log.Printf("seed = %d\n", seed)
 		rand.Seed(seed)
 	} else {
 		log.Printf("seed = %d\n", cfg.Seed)
