@@ -2,37 +2,42 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"math/rand"
 	"time"
 
 	"github.com/veandco/go-sdl2/sdl"
+	"github.com/veandco/go-sdl2/ttf"
 )
 
 const (
-	threshold    = 0.15
-	fps          = 10
-	statusHeight = 0
+	threshold = 0.15
+	fps       = 10
 )
 
 /* commandline flags */
 type cmdlineArgs struct {
-	Width   int   // Width of window in pixels
-	Height  int   // Height of window in pixels
-	Rows    int   // Number of cell rows
-	Columns int   // Number of cell columns
-	Seed    int64 // Seed for PRNG
-	Border  bool  // Border around cells
+	Width    int    // Width of window in pixels
+	Height   int    // Height of window in pixels
+	Rows     int    // Number of cell rows
+	Columns  int    // Number of cell columns
+	Seed     int64  // Seed for PRNG
+	Border   bool   // Border around cells
+	Font     string // Path to TTF to use for status bar
+	FontSize int    // Size of font in points
 }
 
 /* commandline defaults */
 var cfg = cmdlineArgs{
-	Width:   500,
-	Height:  500,
-	Rows:    100,
-	Columns: 100,
-	Seed:    0,
-	Border:  false,
+	Width:    500,
+	Height:   500,
+	Rows:     100,
+	Columns:  100,
+	Seed:     0,
+	Border:   false,
+	Font:     "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",
+	FontSize: 14,
 }
 
 /* parseArgs handles parsing the cmdline args and setting values in the global cfg struct */
@@ -43,6 +48,8 @@ func parseArgs() {
 	flag.IntVar(&cfg.Columns, "columns", cfg.Columns, "Number of cell columns")
 	flag.Int64Var(&cfg.Seed, "seed", cfg.Seed, "PRNG seed")
 	flag.BoolVar(&cfg.Border, "border", cfg.Border, "Border around cells")
+	flag.StringVar(&cfg.Font, "font", cfg.Font, "Path to TTF to use for status bar")
+	flag.IntVar(&cfg.FontSize, "font-size", cfg.FontSize, "Size of font in points")
 
 	flag.Parse()
 }
@@ -73,6 +80,7 @@ type LifeGame struct {
 	// Graphics
 	window     *sdl.Window
 	renderer   *sdl.Renderer
+	font       *ttf.Font
 	bg         RGBAColor
 	fg         RGBAColor
 	cellWidth  int32
@@ -85,6 +93,8 @@ func (g *LifeGame) cleanup() {
 
 	g.renderer.Destroy()
 	g.window.Destroy()
+	g.font.Close()
+	ttf.Quit()
 	sdl.Quit()
 }
 
@@ -172,7 +182,7 @@ func (g *LifeGame) liveNeighbors(c *Cell) int {
 }
 
 // Draw draws the current state of the world
-func (g *LifeGame) Draw() {
+func (g *LifeGame) Draw(status string) {
 	// Clear the world to the background color
 	g.renderer.SetDrawColor(g.bg.r, g.bg.g, g.bg.b, g.bg.a)
 	g.renderer.Clear()
@@ -188,6 +198,9 @@ func (g *LifeGame) Draw() {
 	}
 	// Default to background color
 	g.renderer.SetDrawColor(g.bg.r, g.bg.g, g.bg.b, g.bg.a)
+
+	g.UpdateStatus(status)
+
 	g.renderer.Present()
 }
 
@@ -219,6 +232,36 @@ func (g *LifeGame) UpdateCell(x, y int, erase bool) {
 	g.renderer.Present()
 }
 
+// UpdateStatus draws the status bar
+func (g *LifeGame) UpdateStatus(status string) {
+	text, err := g.font.RenderUTF8Solid(status, sdl.Color{255, 255, 255, 255})
+	if err != nil {
+		log.Printf("Failed to render text: %s\n", err)
+		return
+	}
+	defer text.Free()
+
+	texture, err := g.renderer.CreateTextureFromSurface(text)
+	if err != nil {
+		log.Printf("Failed to render text: %s\n", err)
+		return
+	}
+	defer texture.Destroy()
+
+	w, h, err := g.font.SizeUTF8(status)
+	if err != nil {
+		log.Printf("Failed to get size: %s\n", err)
+		return
+	}
+
+	x := int32((cfg.Width - w) / 2)
+	rect := &sdl.Rect{x, int32(cfg.Height + 2), int32(w), int32(h)}
+	if err = g.renderer.Copy(texture, nil, rect); err != nil {
+		log.Printf("Failed to copy texture: %s\n", err)
+		return
+	}
+}
+
 // NextFrame executes the next screen of the game
 func (g *LifeGame) NextFrame() {
 	if g.pause {
@@ -239,19 +282,15 @@ func (g *LifeGame) NextFrame() {
 		g.age++
 	}
 
-	// TODO -- Implement new status bar
-	//	statusbar.ShowMessage(fmt.Sprintf("age: %5d alive: %4d change: %d", age, liveCells, liveCells-last), 0)
-	log.Printf("age: %5d alive: %4d change: %d", g.age, g.liveCells, g.liveCells-last)
-
 	// Draw a new screen
-	g.Draw()
+	status := fmt.Sprintf("age: %5d alive: %5d change: %5d", g.age, g.liveCells, g.liveCells-last)
+	g.Draw(status)
 }
 
 // Run executes the main loop of the game
 // it handles user input and updating the display at the selected update rate
 func (g *LifeGame) Run() {
 	fpsTime := sdl.GetTicks()
-	g.Draw()
 
 	running := true
 	for running {
@@ -297,12 +336,25 @@ func InitializeGame() *LifeGame {
 		log.Fatalf("Problem initializing SDL: %s", err)
 	}
 
+	if err = ttf.Init(); err != nil {
+		log.Fatalf("Failed to initialize TTF: %s\n", err)
+	}
+
+	// TODO Better Font Selection
+	if game.font, err = ttf.OpenFont(cfg.Font, cfg.FontSize); err != nil {
+		log.Fatalf("Failed to open font: %s\n", err)
+	}
+	log.Printf("Font height is %d", game.font.Height())
+
+	game.font.SetHinting(ttf.HINTING_NORMAL)
+	game.font.SetKerning(true)
+
 	game.window, err = sdl.CreateWindow(
 		"Conway's Game of Life",
 		sdl.WINDOWPOS_UNDEFINED,
 		sdl.WINDOWPOS_UNDEFINED,
 		int32(cfg.Width),
-		int32(cfg.Height),
+		int32(cfg.Height+4+game.font.Height()),
 		sdl.WINDOW_SHOWN)
 	if err != nil {
 		log.Fatalf("Problem initializing SDL window: %s", err)
@@ -319,7 +371,7 @@ func InitializeGame() *LifeGame {
 
 	// Calculate square cell size, take into account --border selection
 	w := cfg.Width / cfg.Columns
-	h := (cfg.Height - statusHeight) / cfg.Rows
+	h := cfg.Height / cfg.Rows
 	if w < h {
 		h = w
 	} else {
