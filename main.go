@@ -319,6 +319,8 @@ func (g *LifeGame) Run() {
 				}
 			}
 		}
+		// Delay a small amount
+		time.Sleep(1 * time.Millisecond)
 		if sdl.GetTicks() > fpsTime+(1000/fps) {
 			g.NextFrame()
 			fpsTime = sdl.GetTicks()
