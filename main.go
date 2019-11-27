@@ -26,6 +26,7 @@ type cmdlineArgs struct {
 	Border   bool   // Border around cells
 	Font     string // Path to TTF to use for status bar
 	FontSize int    // Size of font in points
+	Rule     string // Rulestring to use
 }
 
 /* commandline defaults */
@@ -38,6 +39,7 @@ var cfg = cmdlineArgs{
 	Border:   false,
 	Font:     "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",
 	FontSize: 14,
+	Rule:     "B3/S23",
 }
 
 /* parseArgs handles parsing the cmdline args and setting values in the global cfg struct */
@@ -50,6 +52,7 @@ func parseArgs() {
 	flag.BoolVar(&cfg.Border, "border", cfg.Border, "Border around cells")
 	flag.StringVar(&cfg.Font, "font", cfg.Font, "Path to TTF to use for status bar")
 	flag.IntVar(&cfg.FontSize, "font-size", cfg.FontSize, "Size of font in points")
+	flag.StringVar(&cfg.Rule, "rule", cfg.Rule, "Rulestring Bn.../Sn... (B3/S23)")
 
 	flag.Parse()
 }
@@ -75,6 +78,8 @@ type LifeGame struct {
 	cells     [][]*Cell
 	liveCells int
 	age       int64
+	birth     map[int]bool
+	stayAlive map[int]bool
 
 	// Graphics
 	window     *sdl.Window
@@ -99,6 +104,11 @@ func (g *LifeGame) cleanup() {
 
 // InitializeCells resets the world to a random state
 func (g *LifeGame) InitializeCells() {
+	var err error
+	if g.birth, g.stayAlive, err = ParseRulestring(cfg.Rule); err != nil {
+		log.Fatalf("Failed to parse the rule string (%s): %s\n", cfg.Rule, err)
+	}
+
 	if cfg.Seed == 0 {
 		seed := time.Now().UnixNano()
 		log.Printf("seed = %d\n", seed)
@@ -125,25 +135,11 @@ func (g *LifeGame) InitializeCells() {
 func (g *LifeGame) checkState(c *Cell) {
 	liveCount := g.liveNeighbors(c)
 	if c.alive {
-		// 1. Any live cell with fewer than two live neighbours dies, as if caused by underpopulation.
-		if liveCount < 2 {
-			c.aliveNext = false
-		}
-
-		// 2. Any live cell with two or three live neighbours lives on to the next generation.
-		if liveCount == 2 || liveCount == 3 {
-			c.aliveNext = true
-		}
-
-		// 3. Any live cell with more than three live neighbours dies, as if by overpopulation.
-		if liveCount > 3 {
-			c.aliveNext = false
-		}
+		// Stay alive if the number of neighbors is in stayAlive
+		_, c.aliveNext = g.stayAlive[liveCount]
 	} else {
-		// 4. Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
-		if liveCount == 3 {
-			c.aliveNext = true
-		}
+		// Birth a new cell if number of neighbors is in birth
+		_, c.aliveNext = g.birth[liveCount]
 	}
 }
 
@@ -385,6 +381,16 @@ func InitializeGame() *LifeGame {
 	game.cellHeight = int32(h)
 
 	return game
+}
+
+// ParseRulestring parses the rules that control the game
+//
+// Rulestrings are of the form Bn.../Sn... which list the number of neighbors to birth a new one,
+// and the number of neighbors to stay alive.
+//
+func ParseRulestring(rule string) (birth map[int]bool, stayAlive map[int]bool, err error) {
+
+	return map[int]bool{3: true}, map[int]bool{2: true, 3: true}, nil
 }
 
 func main() {
