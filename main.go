@@ -75,7 +75,6 @@ type LifeGame struct {
 	cells     [][]*Cell
 	liveCells int
 	age       int64
-	pause     bool
 
 	// Graphics
 	window     *sdl.Window
@@ -264,10 +263,6 @@ func (g *LifeGame) UpdateStatus(status string) {
 
 // NextFrame executes the next screen of the game
 func (g *LifeGame) NextFrame() {
-	if g.pause {
-		return
-	}
-
 	last := g.liveCells
 	g.liveCells = 0
 	for x := range g.cells {
@@ -293,8 +288,9 @@ func (g *LifeGame) Run() {
 	fpsTime := sdl.GetTicks()
 
 	running := true
+	oneStep := false
+	pause := false
 	for running {
-		// TODO This loop has very high CPU usage. How to fix that?
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			switch t := event.(type) {
 			case *sdl.QuitEvent:
@@ -307,7 +303,10 @@ func (g *LifeGame) Run() {
 						running = false
 						break
 					case sdl.K_SPACE:
-						g.pause = !g.pause
+						pause = !pause
+					case sdl.K_s:
+						pause = true
+						oneStep = true
 					case sdl.K_r:
 						g.InitializeCells()
 					}
@@ -322,8 +321,11 @@ func (g *LifeGame) Run() {
 		// Delay a small amount
 		time.Sleep(1 * time.Millisecond)
 		if sdl.GetTicks() > fpsTime+(1000/fps) {
-			g.NextFrame()
-			fpsTime = sdl.GetTicks()
+			if !pause || oneStep {
+				g.NextFrame()
+				fpsTime = sdl.GetTicks()
+				oneStep = false
+			}
 		}
 	}
 }
