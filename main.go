@@ -15,7 +15,6 @@ import (
 
 const (
 	threshold = 0.15
-	fps       = 10
 )
 
 /* commandline flags */
@@ -29,6 +28,7 @@ type cmdlineArgs struct {
 	Font     string // Path to TTF to use for status bar
 	FontSize int    // Size of font in points
 	Rule     string // Rulestring to use
+	Fps      int    // Frames per Second
 }
 
 /* commandline defaults */
@@ -42,6 +42,7 @@ var cfg = cmdlineArgs{
 	Font:     "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",
 	FontSize: 14,
 	Rule:     "B3/S23",
+	Fps:      10,
 }
 
 /* parseArgs handles parsing the cmdline args and setting values in the global cfg struct */
@@ -55,6 +56,7 @@ func parseArgs() {
 	flag.StringVar(&cfg.Font, "font", cfg.Font, "Path to TTF to use for status bar")
 	flag.IntVar(&cfg.FontSize, "font-size", cfg.FontSize, "Size of font in points")
 	flag.StringVar(&cfg.Rule, "rule", cfg.Rule, "Rulestring Bn.../Sn... (B3/S23)")
+	flag.IntVar(&cfg.Fps, "fps", cfg.Fps, "Frames per Second update rate (10fps)")
 
 	flag.Parse()
 }
@@ -313,7 +315,7 @@ func (g *LifeGame) Run() {
 		}
 		// Delay a small amount
 		time.Sleep(1 * time.Millisecond)
-		if sdl.GetTicks() > fpsTime+(1000/fps) {
+		if sdl.GetTicks() > fpsTime+(1000/uint32(cfg.Fps)) {
 			if !pause || oneStep {
 				g.NextFrame()
 				fpsTime = sdl.GetTicks()
