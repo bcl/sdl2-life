@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/veandco/go-sdl2/sdl"
@@ -104,11 +106,6 @@ func (g *LifeGame) cleanup() {
 
 // InitializeCells resets the world to a random state
 func (g *LifeGame) InitializeCells() {
-	var err error
-	if g.birth, g.stayAlive, err = ParseRulestring(cfg.Rule); err != nil {
-		log.Fatalf("Failed to parse the rule string (%s): %s\n", cfg.Rule, err)
-	}
-
 	if cfg.Seed == 0 {
 		seed := time.Now().UnixNano()
 		log.Printf("seed = %d\n", seed)
@@ -332,6 +329,10 @@ func InitializeGame() *LifeGame {
 	game := &LifeGame{}
 
 	var err error
+	if game.birth, game.stayAlive, err = ParseRulestring(cfg.Rule); err != nil {
+		log.Fatalf("Failed to parse the rule string (%s): %s\n", cfg.Rule, err)
+	}
+
 	if err = sdl.Init(sdl.INIT_EVERYTHING); err != nil {
 		log.Fatalf("Problem initializing SDL: %s", err)
 	}
@@ -383,14 +384,80 @@ func InitializeGame() *LifeGame {
 	return game
 }
 
+// Parse digits into a map of ints from 0-9
+//
+// Returns an error if they aren't digits, or if there are more than 10 of them
+func parseDigits(digits string) (map[int]bool, error) {
+	ruleMap := make(map[int]bool, 10)
+
+	var errors bool
+	var err error
+	var value int
+	if value, err = strconv.Atoi(digits); err != nil {
+		log.Printf("%s must be digits from 0-9\n", digits)
+		errors = true
+	}
+	if value > 9999999999 {
+		log.Printf("%d has more than 10 digits", value)
+		errors = true
+	}
+	if errors {
+		return nil, fmt.Errorf("ERROR: Problem parsing digits")
+	}
+
+	// Add the digits to the map (order doesn't matter)
+	for value > 0 {
+		ruleMap[value%10] = true
+		value = value / 10
+	}
+
+	return ruleMap, nil
+}
+
 // ParseRulestring parses the rules that control the game
 //
 // Rulestrings are of the form Bn.../Sn... which list the number of neighbors to birth a new one,
 // and the number of neighbors to stay alive.
 //
-func ParseRulestring(rule string) (birth map[int]bool, stayAlive map[int]bool, err error) {
+func ParseRulestring(rule string) (birth map[int]bool, stayAlive map[int]bool, e error) {
+	var errors bool
 
-	return map[int]bool{3: true}, map[int]bool{2: true, 3: true}, nil
+	// Make sure the rule starts with a B
+	if !strings.HasPrefix(rule, "B") {
+		log.Println("ERROR: Rule must start with a 'B'")
+		errors = true
+	}
+
+	// Make sure the rule has a /S in it
+	if !strings.Contains(rule, "/S") {
+		log.Println("ERROR: Rule must contain /S")
+		errors = true
+	}
+	if errors {
+		return nil, nil, fmt.Errorf("The Rule string should look similar to: B2/S23")
+	}
+
+	// Split on the / returning 2 results like Bnn and Snn
+	fields := strings.Split(rule, "/")
+	if len(fields) != 2 {
+		return nil, nil, fmt.Errorf("ERROR: Problem splitting rule on /")
+	}
+
+	var err error
+	// Convert the values to maps
+	birth, err = parseDigits(strings.TrimPrefix(fields[0], "B"))
+	if err != nil {
+		errors = true
+	}
+	stayAlive, err = parseDigits(strings.TrimPrefix(fields[1], "S"))
+	if err != nil {
+		errors = true
+	}
+	if errors {
+		return nil, nil, fmt.Errorf("ERROR: Problem with Birth or Stay alive values")
+	}
+
+	return birth, stayAlive, nil
 }
 
 func main() {
