@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -39,7 +40,7 @@ var cfg = cmdlineArgs{
 	Columns:  100,
 	Seed:     0,
 	Border:   false,
-	Font:     "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",
+	Font:     "",
 	FontSize: 14,
 	Rule:     "B3/S23",
 	Fps:      10,
@@ -60,6 +61,10 @@ func parseArgs() {
 
 	flag.Parse()
 }
+
+// Possible default fonts to search for
+var defaultFonts = []string{"/usr/share/fonts/liberation/LiberationMono-Regular.ttf",
+	"/usr/X11/share/fonts/TTF/LiberationMono-Regular.ttf"}
 
 // RGBAColor holds a color
 type RGBAColor struct {
@@ -343,7 +348,6 @@ func InitializeGame() *LifeGame {
 		log.Fatalf("Failed to initialize TTF: %s\n", err)
 	}
 
-	// TODO Better Font Selection
 	if game.font, err = ttf.OpenFont(cfg.Font, cfg.FontSize); err != nil {
 		log.Fatalf("Failed to open font: %s\n", err)
 	}
@@ -464,6 +468,20 @@ func ParseRulestring(rule string) (birth map[int]bool, stayAlive map[int]bool, e
 
 func main() {
 	parseArgs()
+
+	// If the user didn't specify a font, try to find a default one
+	if len(cfg.Font) == 0 {
+		for _, f := range defaultFonts {
+			if _, err := os.Stat(f); !os.IsNotExist(err) {
+				cfg.Font = f
+				break
+			}
+		}
+	}
+
+	if len(cfg.Font) == 0 {
+		log.Fatal("Failed to find a font for the statusbar. Use -font to Pass the path to a monospaced font")
+	}
 
 	// Initialize the main window
 	game := InitializeGame()
