@@ -282,6 +282,15 @@ func (g *LifeGame) NextFrame() {
 	g.Draw(status)
 }
 
+// ShowKeysHelp prints the keys that are reconized to control behavior
+func ShowKeysHelp() {
+	fmt.Println("h           - Print help")
+	fmt.Println("<space>     - Toggle pause/play")
+	fmt.Println("q           - Quit")
+	fmt.Println("s           - Single step")
+	fmt.Println("r           - Reset the game")
+}
+
 // Run executes the main loop of the game
 // it handles user input and updating the display at the selected update rate
 func (g *LifeGame) Run() {
@@ -299,6 +308,8 @@ func (g *LifeGame) Run() {
 			case *sdl.KeyboardEvent:
 				if t.GetType() == sdl.KEYDOWN {
 					switch t.Keysym.Sym {
+					case sdl.K_h:
+						ShowKeysHelp()
 					case sdl.K_q:
 						running = false
 						break
@@ -493,6 +504,8 @@ func main() {
 
 	// Setup the initial state of the world
 	game.InitializeCells()
+
+	ShowKeysHelp()
 
 	game.Run()
 }
