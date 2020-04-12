@@ -1,6 +1,9 @@
+// sdl2-life
+// by Brian C. Lane <bcl@brianlane.com>
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"log"
@@ -20,30 +23,32 @@ const (
 
 /* commandline flags */
 type cmdlineArgs struct {
-	Width    int    // Width of window in pixels
-	Height   int    // Height of window in pixels
-	Rows     int    // Number of cell rows
-	Columns  int    // Number of cell columns
-	Seed     int64  // Seed for PRNG
-	Border   bool   // Border around cells
-	Font     string // Path to TTF to use for status bar
-	FontSize int    // Size of font in points
-	Rule     string // Rulestring to use
-	Fps      int    // Frames per Second
+	Width       int    // Width of window in pixels
+	Height      int    // Height of window in pixels
+	Rows        int    // Number of cell rows
+	Columns     int    // Number of cell columns
+	Seed        int64  // Seed for PRNG
+	Border      bool   // Border around cells
+	Font        string // Path to TTF to use for status bar
+	FontSize    int    // Size of font in points
+	Rule        string // Rulestring to use
+	Fps         int    // Frames per Second
+	PatternFile string // File with initial pattern
 }
 
 /* commandline defaults */
 var cfg = cmdlineArgs{
-	Width:    500,
-	Height:   500,
-	Rows:     100,
-	Columns:  100,
-	Seed:     0,
-	Border:   false,
-	Font:     "",
-	FontSize: 14,
-	Rule:     "B3/S23",
-	Fps:      10,
+	Width:       500,
+	Height:      500,
+	Rows:        100,
+	Columns:     100,
+	Seed:        0,
+	Border:      false,
+	Font:        "",
+	FontSize:    14,
+	Rule:        "B3/S23",
+	Fps:         10,
+	PatternFile: "",
 }
 
 /* parseArgs handles parsing the cmdline args and setting values in the global cfg struct */
@@ -58,6 +63,7 @@ func parseArgs() {
 	flag.IntVar(&cfg.FontSize, "font-size", cfg.FontSize, "Size of font in points")
 	flag.StringVar(&cfg.Rule, "rule", cfg.Rule, "Rulestring Bn.../Sn... (B3/S23)")
 	flag.IntVar(&cfg.Fps, "fps", cfg.Fps, "Frames per Second update rate (10fps)")
+	flag.StringVar(&cfg.PatternFile, "pattern", cfg.PatternFile, "File with initial pattern to load")
 
 	flag.Parse()
 }
@@ -111,8 +117,39 @@ func (g *LifeGame) cleanup() {
 	sdl.Quit()
 }
 
-// InitializeCells resets the world to a random state
+// InitializeCells resets the world, either randomly or from a pattern file
 func (g *LifeGame) InitializeCells() {
+	g.age = 0
+
+	if len(cfg.PatternFile) == 0 {
+		g.InitializeRandomCells()
+		return
+	}
+
+	// Read all of the pattern file for parsing
+	f, err := os.Open(cfg.PatternFile)
+	if err != nil {
+		log.Fatalf("Error reading pattern file: %s", err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	if !scanner.Scan() {
+		log.Fatalf("%s is empty.", cfg.PatternFile)
+	}
+	header := scanner.Text()
+	if strings.HasPrefix(header, "#Life 1.05") {
+		g.cells, err = ParseLife105(scanner)
+	} else if strings.HasPrefix(header, "#Life 1.06") {
+		log.Fatal("Life 1.06 file format is not supported")
+	} else if strings.HasPrefix(header, "!Name:") {
+		g.cells, err = ParsePlaintext(scanner)
+	}
+}
+
+// InitializeRandomCells resets the world to a random state
+func (g *LifeGame) InitializeRandomCells() {
+
 	if cfg.Seed == 0 {
 		seed := time.Now().UnixNano()
 		log.Printf("seed = %d\n", seed)
@@ -122,7 +159,6 @@ func (g *LifeGame) InitializeCells() {
 		rand.Seed(cfg.Seed)
 	}
 
-	g.age = 0
 	g.cells = make([][]*Cell, cfg.Rows, cfg.Rows)
 	for x := 0; x < cfg.Rows; x++ {
 		for y := 0; y < cfg.Columns; y++ {
@@ -133,6 +169,22 @@ func (g *LifeGame) InitializeCells() {
 			g.cells[x] = append(g.cells[x], c)
 		}
 	}
+}
+
+// ParseLife105 pattern file
+// The header has already been read from the buffer when this is called
+func ParseLife105(scanner *bufio.Scanner) ([][]*Cell, error) {
+	cells := make([][]*Cell, cfg.Rows, cfg.Rows)
+
+	return cells, nil
+}
+
+// ParsePlaintext pattern file
+// The header has already been read from the buffer when this is called
+func ParsePlaintext(scanner *bufio.Scanner) ([][]*Cell, error) {
+	cells := make([][]*Cell, cfg.Rows, cfg.Rows)
+
+	return cells, nil
 }
 
 // checkState determines the state of the cell for the next tick of the game.
