@@ -145,6 +145,10 @@ func (g *LifeGame) InitializeCells() {
 	} else if strings.HasPrefix(header, "!Name:") {
 		g.cells, err = ParsePlaintext(scanner)
 	}
+
+	if err != nil {
+		log.Fatalf("Error reading pattern file: %s", err)
+	}
 }
 
 // InitializeRandomCells resets the world to a random state
@@ -173,9 +177,67 @@ func (g *LifeGame) InitializeRandomCells() {
 
 // ParseLife105 pattern file
 // The header has already been read from the buffer when this is called
+// #D Descriptions lines (0+)
+// #R Rule line (0/1)
+// #P -1 4 (Upper left corner, required, center is 0,0)
+// The pattern is . for dead and * for live
 func ParseLife105(scanner *bufio.Scanner) ([][]*Cell, error) {
 	cells := make([][]*Cell, cfg.Rows, cfg.Rows)
 
+	// Fill it with dead cells first
+	for x := 0; x < cfg.Rows; x++ {
+		for y := 0; y < cfg.Columns; y++ {
+			c := &Cell{x: x, y: y}
+			cells[x] = append(cells[x], c)
+		}
+	}
+
+	var x, y int
+	var err error
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "#D") {
+			continue
+		} else if strings.HasPrefix(line, "#N") {
+			// Use default rules (from the cmdline in this case)
+			continue
+		} else if strings.HasPrefix(line, "#R") {
+			// TODO Parse rule and return it or setup cfg.Rule
+			// Format is: sss/bbb where s is stay alive and b are birth values
+			// Need to flip it to Bbbb/Ssss format
+
+		} else if strings.HasPrefix(line, "#P") {
+			// Initial position
+			fields := strings.Split(line, " ")
+			if len(fields) != 3 {
+				return nil, fmt.Errorf("Cannot parse position line: %s", line)
+			}
+			if y, err = strconv.Atoi(fields[1]); err != nil {
+				return nil, fmt.Errorf("Error parsing position: %s", err)
+			}
+			if x, err = strconv.Atoi(fields[2]); err != nil {
+				return nil, fmt.Errorf("Error parsing position: %s", err)
+			}
+
+			// Move x, y to center of field
+			x = x + cfg.Rows/2
+			y = y + cfg.Columns/2
+		} else {
+			// Parse the line, error if it isn't . or *
+			yLine := y
+			for _, c := range line {
+				if c != '.' && c != '*' {
+					return nil, fmt.Errorf("Illegal characters in pattern: %s", line)
+				}
+				if c == '*' {
+					cells[x][yLine].alive = true
+					cells[x][yLine].aliveNext = true
+				}
+				yLine = yLine + 1
+			}
+			x = x + 1
+		}
+	}
 	return cells, nil
 }
 
