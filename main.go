@@ -123,31 +123,36 @@ func (g *LifeGame) InitializeCells() {
 
 	if len(cfg.PatternFile) == 0 {
 		g.InitializeRandomCells()
-		return
+	} else {
+
+		// Read all of the pattern file for parsing
+		f, err := os.Open(cfg.PatternFile)
+		if err != nil {
+			log.Fatalf("Error reading pattern file: %s", err)
+		}
+		defer f.Close()
+
+		scanner := bufio.NewScanner(f)
+		if !scanner.Scan() {
+			log.Fatalf("%s is empty.", cfg.PatternFile)
+		}
+		header := scanner.Text()
+		if strings.HasPrefix(header, "#Life 1.05") {
+			g.cells, err = ParseLife105(scanner)
+		} else if strings.HasPrefix(header, "#Life 1.06") {
+			log.Fatal("Life 1.06 file format is not supported")
+		} else if strings.HasPrefix(header, "!Name:") {
+			g.cells, err = ParsePlaintext(scanner)
+		}
+
+		if err != nil {
+			log.Fatalf("Error reading pattern file: %s", err)
+		}
 	}
 
-	// Read all of the pattern file for parsing
-	f, err := os.Open(cfg.PatternFile)
-	if err != nil {
-		log.Fatalf("Error reading pattern file: %s", err)
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	if !scanner.Scan() {
-		log.Fatalf("%s is empty.", cfg.PatternFile)
-	}
-	header := scanner.Text()
-	if strings.HasPrefix(header, "#Life 1.05") {
-		g.cells, err = ParseLife105(scanner)
-	} else if strings.HasPrefix(header, "#Life 1.06") {
-		log.Fatal("Life 1.06 file format is not supported")
-	} else if strings.HasPrefix(header, "!Name:") {
-		g.cells, err = ParsePlaintext(scanner)
-	}
-
-	if err != nil {
-		log.Fatalf("Error reading pattern file: %s", err)
+	var err error
+	if g.birth, g.stayAlive, err = ParseRulestring(cfg.Rule); err != nil {
+		log.Fatalf("Failed to parse the rule string (%s): %s\n", cfg.Rule, err)
 	}
 }
 
@@ -201,11 +206,31 @@ func ParseLife105(scanner *bufio.Scanner) ([][]*Cell, error) {
 		} else if strings.HasPrefix(line, "#N") {
 			// Use default rules (from the cmdline in this case)
 			continue
-		} else if strings.HasPrefix(line, "#R") {
+		} else if strings.HasPrefix(line, "#R ") {
 			// TODO Parse rule and return it or setup cfg.Rule
 			// Format is: sss/bbb where s is stay alive and b are birth values
 			// Need to flip it to Bbbb/Ssss format
 
+			// Make sure the rule has a / in it
+			if !strings.Contains(line, "/") {
+				return nil, fmt.Errorf("ERROR: Rule must contain /")
+			}
+
+			fields := strings.Split(line[3:], "/")
+			if len(fields) != 2 {
+				return nil, fmt.Errorf("ERROR: Problem splitting rule on /")
+			}
+
+			var stay, birth int
+			if stay, err = strconv.Atoi(fields[0]); err != nil {
+				return nil, fmt.Errorf("Error parsing alive value: %s", err)
+			}
+
+			if birth, err = strconv.Atoi(fields[1]); err != nil {
+				return nil, fmt.Errorf("Error parsing birth value: %s", err)
+			}
+
+			cfg.Rule = fmt.Sprintf("B%d/S%d", birth, stay)
 		} else if strings.HasPrefix(line, "#P") {
 			// Initial position
 			fields := strings.Split(line, " ")
@@ -461,10 +486,6 @@ func InitializeGame() *LifeGame {
 	game := &LifeGame{}
 
 	var err error
-	if game.birth, game.stayAlive, err = ParseRulestring(cfg.Rule); err != nil {
-		log.Fatalf("Failed to parse the rule string (%s): %s\n", cfg.Rule, err)
-	}
-
 	if err = sdl.Init(sdl.INIT_EVERYTHING); err != nil {
 		log.Fatalf("Problem initializing SDL: %s", err)
 	}
