@@ -34,6 +34,7 @@ type cmdlineArgs struct {
 	Rule        string // Rulestring to use
 	Fps         int    // Frames per Second
 	PatternFile string // File with initial pattern
+	Pause       bool   // Start the game paused
 }
 
 /* commandline defaults */
@@ -49,6 +50,7 @@ var cfg = cmdlineArgs{
 	Rule:        "B3/S23",
 	Fps:         10,
 	PatternFile: "",
+	Pause:       false,
 }
 
 /* parseArgs handles parsing the cmdline args and setting values in the global cfg struct */
@@ -64,6 +66,7 @@ func parseArgs() {
 	flag.StringVar(&cfg.Rule, "rule", cfg.Rule, "Rulestring Bn.../Sn... (B3/S23)")
 	flag.IntVar(&cfg.Fps, "fps", cfg.Fps, "Frames per Second update rate (10fps)")
 	flag.StringVar(&cfg.PatternFile, "pattern", cfg.PatternFile, "File with initial pattern to load")
+	flag.BoolVar(&cfg.Pause, "pause", cfg.Pause, "Start the game paused")
 
 	flag.Parse()
 }
@@ -440,7 +443,7 @@ func (g *LifeGame) Run() {
 
 	running := true
 	oneStep := false
-	pause := false
+	pause := cfg.Pause
 	for running {
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			switch t := event.(type) {
