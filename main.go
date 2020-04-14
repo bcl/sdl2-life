@@ -90,7 +90,7 @@ type Cell struct {
 type LifeGame struct {
 	mp        bool
 	erase     bool
-	cells     [][]*Cell
+	cells     [][]*Cell // NOTE: This is an array of [row][columns] not x,y coordinates
 	liveCells int
 	age       int64
 	birth     map[int]bool
@@ -154,6 +154,9 @@ func (g *LifeGame) InitializeCells() {
 	if g.birth, g.stayAlive, err = ParseRulestring(cfg.Rule); err != nil {
 		log.Fatalf("Failed to parse the rule string (%s): %s\n", cfg.Rule, err)
 	}
+
+	// Draw initial world
+	g.Draw("")
 }
 
 // InitializeRandomCells resets the world to a random state
@@ -168,14 +171,14 @@ func (g *LifeGame) InitializeRandomCells() {
 		rand.Seed(cfg.Seed)
 	}
 
-	g.cells = make([][]*Cell, cfg.Rows, cfg.Rows)
-	for x := 0; x < cfg.Rows; x++ {
-		for y := 0; y < cfg.Columns; y++ {
+	g.cells = make([][]*Cell, cfg.Rows, cfg.Columns)
+	for y := 0; y < cfg.Rows; y++ {
+		for x := 0; x < cfg.Columns; x++ {
 			c := &Cell{x: x, y: y}
 			c.alive = rand.Float64() < threshold
 			c.aliveNext = c.alive
 
-			g.cells[x] = append(g.cells[x], c)
+			g.cells[y] = append(g.cells[y], c)
 		}
 	}
 }
@@ -187,13 +190,13 @@ func (g *LifeGame) InitializeRandomCells() {
 // #P -1 4 (Upper left corner, required, center is 0,0)
 // The pattern is . for dead and * for live
 func ParseLife105(scanner *bufio.Scanner) ([][]*Cell, error) {
-	cells := make([][]*Cell, cfg.Rows, cfg.Rows)
+	cells := make([][]*Cell, cfg.Rows, cfg.Columns)
 
 	// Fill it with dead cells first
-	for x := 0; x < cfg.Rows; x++ {
-		for y := 0; y < cfg.Columns; y++ {
+	for y := 0; y < cfg.Rows; y++ {
+		for x := 0; x < cfg.Columns; x++ {
 			c := &Cell{x: x, y: y}
-			cells[x] = append(cells[x], c)
+			cells[y] = append(cells[y], c)
 		}
 	}
 
@@ -245,22 +248,22 @@ func ParseLife105(scanner *bufio.Scanner) ([][]*Cell, error) {
 			}
 
 			// Move x, y to center of field
-			x = x + cfg.Rows/2
-			y = y + cfg.Columns/2
+			x = x + cfg.Columns/2
+			y = y + cfg.Rows/2
 		} else {
 			// Parse the line, error if it isn't . or *
-			yLine := y
+			xLine := x
 			for _, c := range line {
 				if c != '.' && c != '*' {
 					return nil, fmt.Errorf("Illegal characters in pattern: %s", line)
 				}
 				if c == '*' {
-					cells[x][yLine].alive = true
-					cells[x][yLine].aliveNext = true
+					cells[y][xLine].alive = true
+					cells[y][xLine].aliveNext = true
 				}
-				yLine = yLine + 1
+				xLine = xLine + 1
 			}
-			x = x + 1
+			y = y + 1
 		}
 	}
 	return cells, nil
@@ -269,7 +272,7 @@ func ParseLife105(scanner *bufio.Scanner) ([][]*Cell, error) {
 // ParsePlaintext pattern file
 // The header has already been read from the buffer when this is called
 func ParsePlaintext(scanner *bufio.Scanner) ([][]*Cell, error) {
-	cells := make([][]*Cell, cfg.Rows, cfg.Rows)
+	cells := make([][]*Cell, cfg.Rows, cfg.Columns)
 
 	return cells, nil
 }
@@ -291,18 +294,18 @@ func (g *LifeGame) liveNeighbors(c *Cell) int {
 	var liveCount int
 	add := func(x, y int) {
 		// If we're at an edge, check the other side of the board.
-		if x == len(g.cells) {
-			x = 0
-		} else if x == -1 {
-			x = len(g.cells) - 1
-		}
-		if y == len(g.cells[x]) {
+		if y == len(g.cells) {
 			y = 0
 		} else if y == -1 {
-			y = len(g.cells[x]) - 1
+			y = len(g.cells) - 1
+		}
+		if x == len(g.cells[y]) {
+			x = 0
+		} else if x == -1 {
+			x = len(g.cells[y]) - 1
 		}
 
-		if g.cells[x][y].alive {
+		if g.cells[y][x].alive {
 			liveCount++
 		}
 	}
@@ -325,8 +328,8 @@ func (g *LifeGame) Draw(status string) {
 	g.renderer.SetDrawColor(g.bg.r, g.bg.g, g.bg.b, g.bg.a)
 	g.renderer.Clear()
 	g.renderer.SetDrawColor(g.fg.r, g.fg.g, g.fg.b, g.fg.a)
-	for x := range g.cells {
-		for _, c := range g.cells[x] {
+	for y := range g.cells {
+		for _, c := range g.cells[y] {
 			c.alive = c.aliveNext
 			if !c.alive {
 				continue
@@ -355,7 +358,7 @@ func (g *LifeGame) DrawCell(c Cell) {
 
 // UpdateCell redraws an existing cell, optionally erasing it
 func (g *LifeGame) UpdateCell(x, y int, erase bool) {
-	g.cells[x][y].alive = !erase
+	g.cells[y][x].alive = !erase
 
 	// Update the image right now
 	if erase {
@@ -363,7 +366,7 @@ func (g *LifeGame) UpdateCell(x, y int, erase bool) {
 	} else {
 		g.renderer.SetDrawColor(g.fg.r, g.fg.g, g.fg.b, g.fg.a)
 	}
-	g.DrawCell(*g.cells[x][y])
+	g.DrawCell(*g.cells[y][x])
 
 	// Default to background color
 	g.renderer.SetDrawColor(g.bg.r, g.bg.g, g.bg.b, g.bg.a)
@@ -404,8 +407,8 @@ func (g *LifeGame) UpdateStatus(status string) {
 func (g *LifeGame) NextFrame() {
 	last := g.liveCells
 	g.liveCells = 0
-	for x := range g.cells {
-		for _, c := range g.cells[x] {
+	for y := range g.cells {
+		for _, c := range g.cells[y] {
 			g.checkState(c)
 			if c.aliveNext {
 				g.liveCells++
