@@ -144,8 +144,8 @@ func (g *LifeGame) InitializeCells() {
 			g.cells, err = ParseLife105(scanner)
 		} else if strings.HasPrefix(header, "#Life 1.06") {
 			log.Fatal("Life 1.06 file format is not supported")
-		} else if strings.HasPrefix(header, "!Name:") {
-			g.cells, err = ParsePlaintext(scanner)
+		} else {
+			g.cells, err = ParsePlaintext(header, scanner)
 		}
 
 		if err != nil {
@@ -274,8 +274,42 @@ func ParseLife105(scanner *bufio.Scanner) ([][]*Cell, error) {
 
 // ParsePlaintext pattern file
 // The header has already been read from the buffer when this is called
-func ParsePlaintext(scanner *bufio.Scanner) ([][]*Cell, error) {
+// This is a bit more generic than the spec, skip lines starting with !
+// and assume the pattern is . for dead cells any anything else for live.
+func ParsePlaintext(name string, scanner *bufio.Scanner) ([][]*Cell, error) {
 	cells := make([][]*Cell, cfg.Rows, cfg.Columns)
+
+	// Fill it with dead cells first
+	for y := 0; y < cfg.Rows; y++ {
+		for x := 0; x < cfg.Columns; x++ {
+			c := &Cell{x: x, y: y}
+			cells[y] = append(cells[y], c)
+		}
+	}
+
+	var x, y int
+
+	// Move x, y to center of field
+	x = cfg.Columns / 2
+	y = cfg.Rows / 2
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "!") {
+			continue
+		} else {
+			// Parse the line, . is dead, anything else is alive.
+			xLine := x
+			for _, c := range line {
+				if c != '.' {
+					cells[y][xLine].alive = true
+					cells[y][xLine].aliveNext = true
+				}
+				xLine = xLine + 1
+			}
+			y = y + 1
+		}
+	}
 
 	return cells, nil
 }
