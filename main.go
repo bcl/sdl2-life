@@ -136,16 +136,20 @@ func (g *LifeGame) InitializeCells() {
 		defer f.Close()
 
 		scanner := bufio.NewScanner(f)
-		if !scanner.Scan() {
+		var lines []string
+		for scanner.Scan() {
+			lines = append(lines, scanner.Text())
+		}
+		if len(lines) == 0 {
 			log.Fatalf("%s is empty.", cfg.PatternFile)
 		}
-		header := scanner.Text()
-		if strings.HasPrefix(header, "#Life 1.05") {
-			g.cells, err = ParseLife105(scanner)
-		} else if strings.HasPrefix(header, "#Life 1.06") {
+
+		if strings.HasPrefix(lines[0], "#Life 1.05") {
+			g.cells, err = ParseLife105(lines)
+		} else if strings.HasPrefix(lines[0], "#Life 1.06") {
 			log.Fatal("Life 1.06 file format is not supported")
 		} else {
-			g.cells, err = ParsePlaintext(header, scanner)
+			g.cells, err = ParsePlaintext(lines)
 		}
 
 		if err != nil {
@@ -192,7 +196,7 @@ func (g *LifeGame) InitializeRandomCells() {
 // #R Rule line (0/1)
 // #P -1 4 (Upper left corner, required, center is 0,0)
 // The pattern is . for dead and * for live
-func ParseLife105(scanner *bufio.Scanner) ([][]*Cell, error) {
+func ParseLife105(lines []string) ([][]*Cell, error) {
 	cells := make([][]*Cell, cfg.Rows, cfg.Columns)
 
 	// Fill it with dead cells first
@@ -205,8 +209,7 @@ func ParseLife105(scanner *bufio.Scanner) ([][]*Cell, error) {
 
 	var x, y int
 	var err error
-	for scanner.Scan() {
-		line := scanner.Text()
+	for _, line := range lines {
 		if strings.HasPrefix(line, "#D") {
 			continue
 		} else if strings.HasPrefix(line, "#N") {
@@ -276,7 +279,7 @@ func ParseLife105(scanner *bufio.Scanner) ([][]*Cell, error) {
 // The header has already been read from the buffer when this is called
 // This is a bit more generic than the spec, skip lines starting with !
 // and assume the pattern is . for dead cells any anything else for live.
-func ParsePlaintext(name string, scanner *bufio.Scanner) ([][]*Cell, error) {
+func ParsePlaintext(lines []string) ([][]*Cell, error) {
 	cells := make([][]*Cell, cfg.Rows, cfg.Columns)
 
 	// Fill it with dead cells first
@@ -293,8 +296,7 @@ func ParsePlaintext(name string, scanner *bufio.Scanner) ([][]*Cell, error) {
 	x = cfg.Columns / 2
 	y = cfg.Rows / 2
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for _, line := range lines {
 		if strings.HasPrefix(line, "!") {
 			continue
 		} else {
