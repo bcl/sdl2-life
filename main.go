@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -36,6 +37,9 @@ type cmdlineArgs struct {
 	PatternFile string // File with initial pattern
 	Pause       bool   // Start the game paused
 	Empty       bool   // Start with empty world
+	Port        int    // Port to listen to
+	Host        string // Host IP to bind to
+	Server      bool   // Launch an API server when true
 }
 
 /* commandline defaults */
@@ -53,6 +57,9 @@ var cfg = cmdlineArgs{
 	PatternFile: "",
 	Pause:       false,
 	Empty:       false,
+	Port:        3051,
+	Host:        "127.0.0.1",
+	Server:      false,
 }
 
 /* parseArgs handles parsing the cmdline args and setting values in the global cfg struct */
@@ -70,6 +77,9 @@ func parseArgs() {
 	flag.StringVar(&cfg.PatternFile, "pattern", cfg.PatternFile, "File with initial pattern to load")
 	flag.BoolVar(&cfg.Pause, "pause", cfg.Pause, "Start the game paused")
 	flag.BoolVar(&cfg.Empty, "empty", cfg.Empty, "Start with empty world")
+	flag.IntVar(&cfg.Port, "port", cfg.Port, "Port to listen to")
+	flag.StringVar(&cfg.Host, "host", cfg.Host, "Host IP to bind to")
+	flag.BoolVar(&cfg.Server, "server", cfg.Server, "Launch an API server")
 
 	flag.Parse()
 }
@@ -93,6 +103,9 @@ type Cell struct {
 	y int
 }
 
+// Pattern is used to pass patterns from the API to the game
+type Pattern []string
+
 // LifeGame holds all the global state of the game and the methods to operate on it
 type LifeGame struct {
 	mp        bool
@@ -111,6 +124,7 @@ type LifeGame struct {
 	fg         RGBAColor
 	cellWidth  int32
 	cellHeight int32
+	pChan      <-chan Pattern
 }
 
 // cleanup will handle cleanup of allocated resources
@@ -505,6 +519,22 @@ func (g *LifeGame) Run() {
 				oneStep = false
 			}
 		}
+
+		if g.pChan != nil {
+			select {
+			case pattern := <-g.pChan:
+				var err error
+				if strings.HasPrefix(pattern[0], "#Life 1.05") {
+					err = g.ParseLife105(pattern)
+				} else {
+					err = g.ParsePlaintext(pattern)
+				}
+				if err != nil {
+					log.Printf("Pattern error: %s\n", err)
+				}
+			default:
+			}
+		}
 	}
 }
 
@@ -640,6 +670,33 @@ func ParseRulestring(rule string) (birth map[int]bool, stayAlive map[int]bool, e
 	return birth, stayAlive, nil
 }
 
+// Server starts an API server to receive patterns
+func Server(host string, port int, pChan chan<- Pattern) {
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "", http.StatusMethodNotAllowed)
+			return
+		}
+
+		scanner := bufio.NewScanner(r.Body)
+		var pattern Pattern
+		for scanner.Scan() {
+			pattern = append(pattern, scanner.Text())
+		}
+		if len(pattern) == 0 {
+			http.Error(w, "Empty pattern", http.StatusServiceUnavailable)
+			return
+		}
+
+		// Splat this pattern onto the world
+		pChan <- pattern
+	})
+
+	log.Printf("Starting server on %s:%d", host, port)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf("%s:%d", host, port), nil))
+}
+
 func main() {
 	parseArgs()
 
@@ -669,6 +726,12 @@ func main() {
 	game.InitializeCells()
 
 	ShowKeysHelp()
+
+	if cfg.Server {
+		ch := make(chan Pattern, 2)
+		game.pChan = ch
+		go Server(cfg.Host, cfg.Port, ch)
+	}
 
 	game.Run()
 }
