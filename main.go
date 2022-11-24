@@ -125,6 +125,15 @@ func (g *LifeGame) cleanup() {
 func (g *LifeGame) InitializeCells() {
 	g.age = 0
 
+	// Fill it with dead cells first
+	g.cells = make([][]*Cell, cfg.Rows, cfg.Columns)
+	for y := 0; y < cfg.Rows; y++ {
+		for x := 0; x < cfg.Columns; x++ {
+			c := &Cell{x: x, y: y}
+			g.cells[y] = append(g.cells[y], c)
+		}
+	}
+
 	if len(cfg.PatternFile) == 0 {
 		g.InitializeRandomCells()
 	} else {
@@ -146,11 +155,11 @@ func (g *LifeGame) InitializeCells() {
 		}
 
 		if strings.HasPrefix(lines[0], "#Life 1.05") {
-			g.cells, err = ParseLife105(lines)
+			err = g.ParseLife105(lines)
 		} else if strings.HasPrefix(lines[0], "#Life 1.06") {
 			log.Fatal("Life 1.06 file format is not supported")
 		} else {
-			g.cells, err = ParsePlaintext(lines)
+			err = g.ParsePlaintext(lines)
 		}
 
 		if err != nil {
@@ -179,39 +188,24 @@ func (g *LifeGame) InitializeRandomCells() {
 		rand.Seed(cfg.Seed)
 	}
 
-	g.cells = make([][]*Cell, cfg.Rows, cfg.Columns)
 	for y := 0; y < cfg.Rows; y++ {
 		for x := 0; x < cfg.Columns; x++ {
-			c := &Cell{x: x, y: y}
-			c.alive = rand.Float64() < threshold
-			c.aliveNext = c.alive
-
-			g.cells[y] = append(g.cells[y], c)
+			g.cells[y][x].alive = rand.Float64() < threshold
+			g.cells[y][x].aliveNext = g.cells[y][x].alive
 		}
 	}
 }
 
 // ParseLife105 pattern file
-// The header has already been read from the buffer when this is called
 // #D Descriptions lines (0+)
 // #R Rule line (0/1)
 // #P -1 4 (Upper left corner, required, center is 0,0)
 // The pattern is . for dead and * for live
-func ParseLife105(lines []string) ([][]*Cell, error) {
-	cells := make([][]*Cell, cfg.Rows, cfg.Columns)
-
-	// Fill it with dead cells first
-	for y := 0; y < cfg.Rows; y++ {
-		for x := 0; x < cfg.Columns; x++ {
-			c := &Cell{x: x, y: y}
-			cells[y] = append(cells[y], c)
-		}
-	}
-
+func (g *LifeGame) ParseLife105(lines []string) error {
 	var x, y int
 	var err error
 	for _, line := range lines {
-		if strings.HasPrefix(line, "#D") {
+		if strings.HasPrefix(line, "#D") || strings.HasPrefix(line, "#Life") {
 			continue
 		} else if strings.HasPrefix(line, "#N") {
 			// Use default rules (from the cmdline in this case)
@@ -223,21 +217,21 @@ func ParseLife105(lines []string) ([][]*Cell, error) {
 
 			// Make sure the rule has a / in it
 			if !strings.Contains(line, "/") {
-				return nil, fmt.Errorf("ERROR: Rule must contain /")
+				return fmt.Errorf("ERROR: Rule must contain /")
 			}
 
 			fields := strings.Split(line[3:], "/")
 			if len(fields) != 2 {
-				return nil, fmt.Errorf("ERROR: Problem splitting rule on /")
+				return fmt.Errorf("ERROR: Problem splitting rule on /")
 			}
 
 			var stay, birth int
 			if stay, err = strconv.Atoi(fields[0]); err != nil {
-				return nil, fmt.Errorf("Error parsing alive value: %s", err)
+				return fmt.Errorf("Error parsing alive value: %s", err)
 			}
 
 			if birth, err = strconv.Atoi(fields[1]); err != nil {
-				return nil, fmt.Errorf("Error parsing birth value: %s", err)
+				return fmt.Errorf("Error parsing birth value: %s", err)
 			}
 
 			cfg.Rule = fmt.Sprintf("B%d/S%d", birth, stay)
@@ -245,52 +239,43 @@ func ParseLife105(lines []string) ([][]*Cell, error) {
 			// Initial position
 			fields := strings.Split(line, " ")
 			if len(fields) != 3 {
-				return nil, fmt.Errorf("Cannot parse position line: %s", line)
+				return fmt.Errorf("Cannot parse position line: %s", line)
 			}
 			if y, err = strconv.Atoi(fields[1]); err != nil {
-				return nil, fmt.Errorf("Error parsing position: %s", err)
+				return fmt.Errorf("Error parsing position: %s", err)
 			}
 			if x, err = strconv.Atoi(fields[2]); err != nil {
-				return nil, fmt.Errorf("Error parsing position: %s", err)
+				return fmt.Errorf("Error parsing position: %s", err)
 			}
 
-			// Move x, y to center of field
-			x = x + cfg.Columns/2
-			y = y + cfg.Rows/2
+			// Move x, y to center of field and wrap at the edges
+			// NOTE: % in go preserves sign of a, unlike Python :)
+			x = cfg.Columns/2 + x
+			x = (x%cfg.Columns + cfg.Columns) % cfg.Columns
+			y = cfg.Rows/2 + y
+			y = (y%cfg.Rows + cfg.Rows) % cfg.Rows
 		} else {
 			// Parse the line, error if it isn't . or *
 			xLine := x
 			for _, c := range line {
 				if c != '.' && c != '*' {
-					return nil, fmt.Errorf("Illegal characters in pattern: %s", line)
+					return fmt.Errorf("Illegal characters in pattern: %s", line)
 				}
-				if c == '*' {
-					cells[y][xLine].alive = true
-					cells[y][xLine].aliveNext = true
-				}
-				xLine = xLine + 1
+				g.cells[y][xLine].alive = bool(c == '*')
+				g.cells[y][xLine].aliveNext = bool(c == '*')
+				xLine = (xLine + 1) % cfg.Columns
 			}
-			y = y + 1
+			y = (y + 1) % cfg.Rows
 		}
 	}
-	return cells, nil
+	return nil
 }
 
 // ParsePlaintext pattern file
 // The header has already been read from the buffer when this is called
 // This is a bit more generic than the spec, skip lines starting with !
 // and assume the pattern is . for dead cells any anything else for live.
-func ParsePlaintext(lines []string) ([][]*Cell, error) {
-	cells := make([][]*Cell, cfg.Rows, cfg.Columns)
-
-	// Fill it with dead cells first
-	for y := 0; y < cfg.Rows; y++ {
-		for x := 0; x < cfg.Columns; x++ {
-			c := &Cell{x: x, y: y}
-			cells[y] = append(cells[y], c)
-		}
-	}
-
+func (g *LifeGame) ParsePlaintext(lines []string) error {
 	var x, y int
 
 	// Move x, y to center of field
@@ -304,17 +289,15 @@ func ParsePlaintext(lines []string) ([][]*Cell, error) {
 			// Parse the line, . is dead, anything else is alive.
 			xLine := x
 			for _, c := range line {
-				if c != '.' {
-					cells[y][xLine].alive = true
-					cells[y][xLine].aliveNext = true
-				}
-				xLine = xLine + 1
+				g.cells[y][xLine].alive = bool(c != '.')
+				g.cells[y][xLine].aliveNext = bool(c != '.')
+				xLine = (xLine + 1) % cfg.Columns
 			}
-			y = y + 1
+			y = (y + 1) % cfg.Rows
 		}
 	}
 
-	return cells, nil
+	return nil
 }
 
 // checkState determines the state of the cell for the next tick of the game.
