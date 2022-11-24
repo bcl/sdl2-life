@@ -73,6 +73,7 @@ func parseArgs() {
 
 // Possible default fonts to search for
 var defaultFonts = []string{"/usr/share/fonts/liberation/LiberationMono-Regular.ttf",
+	"/usr/local/share/fonts/TerminusTTF/TerminusTTF-4.49.2.ttf",
 	"/usr/X11/share/fonts/TTF/LiberationMono-Regular.ttf"}
 
 // RGBAColor holds a color
