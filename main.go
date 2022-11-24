@@ -35,6 +35,7 @@ type cmdlineArgs struct {
 	Fps         int    // Frames per Second
 	PatternFile string // File with initial pattern
 	Pause       bool   // Start the game paused
+	Empty       bool   // Start with empty world
 }
 
 /* commandline defaults */
@@ -51,6 +52,7 @@ var cfg = cmdlineArgs{
 	Fps:         10,
 	PatternFile: "",
 	Pause:       false,
+	Empty:       false,
 }
 
 /* parseArgs handles parsing the cmdline args and setting values in the global cfg struct */
@@ -67,6 +69,7 @@ func parseArgs() {
 	flag.IntVar(&cfg.Fps, "fps", cfg.Fps, "Frames per Second update rate (10fps)")
 	flag.StringVar(&cfg.PatternFile, "pattern", cfg.PatternFile, "File with initial pattern to load")
 	flag.BoolVar(&cfg.Pause, "pause", cfg.Pause, "Start the game paused")
+	flag.BoolVar(&cfg.Empty, "empty", cfg.Empty, "Start with empty world")
 
 	flag.Parse()
 }
@@ -134,10 +137,7 @@ func (g *LifeGame) InitializeCells() {
 		}
 	}
 
-	if len(cfg.PatternFile) == 0 {
-		g.InitializeRandomCells()
-	} else {
-
+	if len(cfg.PatternFile) > 0 {
 		// Read all of the pattern file for parsing
 		f, err := os.Open(cfg.PatternFile)
 		if err != nil {
@@ -165,6 +165,8 @@ func (g *LifeGame) InitializeCells() {
 		if err != nil {
 			log.Fatalf("Error reading pattern file: %s", err)
 		}
+	} else if !cfg.Empty {
+		g.InitializeRandomCells()
 	}
 
 	var err error
