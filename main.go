@@ -199,6 +199,19 @@ func (g *LifeGame) InitializeCells() {
 	g.Draw("")
 }
 
+// TranslateXY move the x, y coordinates so that 0, 0 is the center of the world
+// and handle wrapping at the edges
+func (g *LifeGame) TranslateXY(x, y int) (int, int) {
+	// Move x, y to center of field and wrap at the edges
+	// NOTE: % in go preserves sign of a, unlike Python :)
+	x = cfg.Columns/2 + x
+	x = (x%cfg.Columns + cfg.Columns) % cfg.Columns
+	y = cfg.Rows/2 + y
+	y = (y%cfg.Rows + cfg.Rows) % cfg.Rows
+
+	return x, y
+}
+
 // InitializeRandomCells resets the world to a random state
 func (g *LifeGame) InitializeRandomCells() {
 
@@ -271,12 +284,8 @@ func (g *LifeGame) ParseLife105(lines []string) error {
 				return fmt.Errorf("Error parsing position: %s", err)
 			}
 
-			// Move x, y to center of field and wrap at the edges
-			// NOTE: % in go preserves sign of a, unlike Python :)
-			x = cfg.Columns/2 + x
-			x = (x%cfg.Columns + cfg.Columns) % cfg.Columns
-			y = cfg.Rows/2 + y
-			y = (y%cfg.Rows + cfg.Rows) % cfg.Rows
+			// Move to 0, 0 at the center of the world
+			x, y = g.TranslateXY(x, y)
 		} else {
 			// Parse the line, error if it isn't . or *
 			xLine := x
@@ -337,12 +346,8 @@ func isRLE(lines []string) bool {
 // Parses files matching the RLE specification - https://conwaylife.com/wiki/Run_Length_Encoded
 // Optional x, y starting position for later use
 func (g *LifeGame) ParseRLE(lines []string, x, y int) error {
-	// Move x, y to center of field and wrap at the edges
-	// NOTE: % in go preserves sign of a, unlike Python :)
-	x = cfg.Columns/2 + x
-	x = (x%cfg.Columns + cfg.Columns) % cfg.Columns
-	y = cfg.Rows/2 + y
-	y = (y%cfg.Rows + cfg.Rows) % cfg.Rows
+	// Move to 0, 0 at the center of the world
+	x, y = g.TranslateXY(x, y)
 
 	var header []string
 	var first int
