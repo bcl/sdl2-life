@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,10 @@ import (
 const (
 	threshold = 0.15
 )
+
+// RLE header with variable spacing and optional rules
+// Matches it with or without rule at the end, and with 0 or more spaces between elements.
+var rleHeaderRegex = regexp.MustCompile(`x\s*=\s*(\d+)\s*,\s*y\s*=\s*(\d+)(?:\s*,\s*rule\s*=\s*(.*))*`)
 
 /* commandline flags */
 type cmdlineArgs struct {
@@ -172,6 +177,8 @@ func (g *LifeGame) InitializeCells() {
 			err = g.ParseLife105(lines)
 		} else if strings.HasPrefix(lines[0], "#Life 1.06") {
 			log.Fatal("Life 1.06 file format is not supported")
+		} else if isRLE(lines) {
+			err = g.ParseRLE(lines, 0, 0)
 		} else {
 			err = g.ParsePlaintext(lines)
 		}
@@ -313,6 +320,128 @@ func (g *LifeGame) ParsePlaintext(lines []string) error {
 		}
 	}
 
+	return nil
+}
+
+// isRLEPattern checks the lines to determine if it is a RLE pattern
+func isRLE(lines []string) bool {
+	for _, line := range lines {
+		if rleHeaderRegex.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
+// ParseRLE pattern file
+// Parses files matching the RLE specification - https://conwaylife.com/wiki/Run_Length_Encoded
+// Optional x, y starting position for later use
+func (g *LifeGame) ParseRLE(lines []string, x, y int) error {
+	// Move x, y to center of field and wrap at the edges
+	// NOTE: % in go preserves sign of a, unlike Python :)
+	x = cfg.Columns/2 + x
+	x = (x%cfg.Columns + cfg.Columns) % cfg.Columns
+	y = cfg.Rows/2 + y
+	y = (y%cfg.Rows + cfg.Rows) % cfg.Rows
+
+	var header []string
+	var first int
+	for i, line := range lines {
+		header = rleHeaderRegex.FindStringSubmatch(line)
+		if len(header) > 0 {
+			first = i + 1
+			break
+		}
+		// All lines before the header must be a # line
+		if line[0] != '#' {
+			return fmt.Errorf("Incorrect or missing RLE header")
+		}
+	}
+	if len(header) < 3 {
+		return fmt.Errorf("Incorrect or missing RLE header")
+	}
+	if first > len(lines)-1 {
+		return fmt.Errorf("Missing lines after RLE header")
+	}
+	width, err := strconv.Atoi(header[1])
+	if err != nil {
+		return fmt.Errorf("Error parsing width: %s", err)
+	}
+	height, err := strconv.Atoi(header[2])
+	if err != nil {
+		return fmt.Errorf("Error parsing height: %s", err)
+	}
+
+	// TODO Parse rules from header[3] and alter the game
+
+	count := 0
+	xLine := x
+	yStart := y
+	for _, line := range lines[first:] {
+		for _, c := range line {
+			if c == '$' {
+				// End of this line (which can have a count)
+				eols := 0
+				if count == 0 {
+					eols = 1
+				} else {
+					eols = count
+				}
+
+				// Blank cells to the edge of the pattern, and full empty lines
+				for i := 0; i < eols; i++ {
+					for j := xLine; j < x+width; j++ {
+						g.cells[y][j].alive = false
+						g.cells[y][j].aliveNext = false
+					}
+					// 2nd line and more fill the full line
+					xLine = x
+					y = y + 1
+				}
+
+				count = 0
+				xLine = x
+				continue
+			}
+			if c == '!' {
+				// Finished
+
+				// Fill in any remaining space with dead cells
+				eols := height - (y - yStart)
+				// Blank cells to the edge of the pattern, and full empty lines
+				for i := 0; i < eols; i++ {
+					for j := xLine; j < x+width; j++ {
+						g.cells[y][j].alive = false
+						g.cells[y][j].aliveNext = false
+					}
+					// 2nd line and more fill the full line
+					xLine = x
+					y = y + 1
+				}
+
+				return nil
+			}
+
+			// Is it a digit?
+			digit, err := strconv.Atoi(string(c))
+			if err == nil {
+				count = (count * 10) + digit
+				continue
+			}
+
+			if count == 0 {
+				count = 1
+			}
+
+			// TODO wrap at edges
+			for i := 0; i < count; i++ {
+				g.cells[y][xLine].alive = bool(c != 'b')
+				g.cells[y][xLine].aliveNext = bool(c != 'b')
+				xLine++
+			}
+			count = 0
+		}
+	}
 	return nil
 }
 
@@ -526,6 +655,8 @@ func (g *LifeGame) Run() {
 				var err error
 				if strings.HasPrefix(pattern[0], "#Life 1.05") {
 					err = g.ParseLife105(pattern)
+				} else if isRLE(pattern) {
+					err = g.ParseRLE(pattern, 0, 0)
 				} else {
 					err = g.ParsePlaintext(pattern)
 				}
