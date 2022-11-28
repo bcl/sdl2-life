@@ -212,6 +212,32 @@ func (g *LifeGame) TranslateXY(x, y int) (int, int) {
 	return x, y
 }
 
+// SetCellState sets the cell alive state
+// it also wraps the x and y at the edges and returns the new value
+func (g *LifeGame) SetCellState(x, y int, alive bool) (int, int) {
+	x = x % cfg.Columns
+	y = y % cfg.Rows
+	g.cells[y][x].alive = alive
+	g.cells[y][x].aliveNext = alive
+
+	return x, y
+}
+
+// FillDead makes sure the rest of a line, width long, is filled with dead cells
+// xEdge is the left side of the box of width length
+// x is the starting point for the first line, any further lines start at xEdge
+func (g *LifeGame) FillDead(xEdge, x, y, width, height int) {
+	for i := 0; i < height; i++ {
+		jlen := width - x
+		for j := 0; j < jlen; j++ {
+			x, y = g.SetCellState(x, y, false)
+			x++
+		}
+		y++
+		x = xEdge
+	}
+}
+
 // InitializeRandomCells resets the world to a random state
 func (g *LifeGame) InitializeRandomCells() {
 
@@ -226,8 +252,7 @@ func (g *LifeGame) InitializeRandomCells() {
 
 	for y := 0; y < cfg.Rows; y++ {
 		for x := 0; x < cfg.Columns; x++ {
-			g.cells[y][x].alive = rand.Float64() < threshold
-			g.cells[y][x].aliveNext = g.cells[y][x].alive
+			g.SetCellState(x, y, rand.Float64() < threshold)
 		}
 	}
 }
@@ -293,11 +318,10 @@ func (g *LifeGame) ParseLife105(lines []string) error {
 				if c != '.' && c != '*' {
 					return fmt.Errorf("Illegal characters in pattern: %s", line)
 				}
-				g.cells[y][xLine].alive = bool(c == '*')
-				g.cells[y][xLine].aliveNext = bool(c == '*')
-				xLine = (xLine + 1) % cfg.Columns
+				xLine, y = g.SetCellState(xLine, y, c == '*')
+				xLine++
 			}
-			y = (y + 1) % cfg.Rows
+			y++
 		}
 	}
 	return nil
@@ -321,11 +345,10 @@ func (g *LifeGame) ParsePlaintext(lines []string) error {
 			// Parse the line, . is dead, anything else is alive.
 			xLine := x
 			for _, c := range line {
-				g.cells[y][xLine].alive = bool(c != '.')
-				g.cells[y][xLine].aliveNext = bool(c != '.')
-				xLine = (xLine + 1) % cfg.Columns
+				g.SetCellState(xLine, y, c != '.')
+				xLine++
 			}
-			y = (y + 1) % cfg.Rows
+			y++
 		}
 	}
 
@@ -377,7 +400,10 @@ func (g *LifeGame) ParseRLE(lines []string, x, y int) error {
 		return fmt.Errorf("Error parsing height: %s", err)
 	}
 
-	// TODO Parse rules from header[3] and alter the game
+	// Were there rules? Use them. TODO override if cmdline rules passed in
+	if len(header) == 4 {
+		cfg.Rule = header[3]
+	}
 
 	count := 0
 	xLine := x
@@ -386,44 +412,21 @@ func (g *LifeGame) ParseRLE(lines []string, x, y int) error {
 		for _, c := range line {
 			if c == '$' {
 				// End of this line (which can have a count)
-				eols := 0
 				if count == 0 {
-					eols = 1
-				} else {
-					eols = count
+					count = 1
 				}
-
 				// Blank cells to the edge of the pattern, and full empty lines
-				for i := 0; i < eols; i++ {
-					for j := xLine; j < x+width; j++ {
-						g.cells[y][j].alive = false
-						g.cells[y][j].aliveNext = false
-					}
-					// 2nd line and more fill the full line
-					xLine = x
-					y = y + 1
-				}
+				g.FillDead(x, xLine, y, width, count)
 
-				count = 0
 				xLine = x
+				y = y + count
+				count = 0
 				continue
 			}
 			if c == '!' {
 				// Finished
-
 				// Fill in any remaining space with dead cells
-				eols := height - (y - yStart)
-				// Blank cells to the edge of the pattern, and full empty lines
-				for i := 0; i < eols; i++ {
-					for j := xLine; j < x+width; j++ {
-						g.cells[y][j].alive = false
-						g.cells[y][j].aliveNext = false
-					}
-					// 2nd line and more fill the full line
-					xLine = x
-					y = y + 1
-				}
-
+				g.FillDead(x, xLine, y, width, height-(y-yStart))
 				return nil
 			}
 
@@ -438,10 +441,8 @@ func (g *LifeGame) ParseRLE(lines []string, x, y int) error {
 				count = 1
 			}
 
-			// TODO wrap at edges
 			for i := 0; i < count; i++ {
-				g.cells[y][xLine].alive = bool(c != 'b')
-				g.cells[y][xLine].aliveNext = bool(c != 'b')
+				xLine, y = g.SetCellState(xLine, y, c != 'b')
 				xLine++
 			}
 			count = 0
