@@ -42,6 +42,7 @@ type cmdlineArgs struct {
 	PatternFile string // File with initial pattern
 	Pause       bool   // Start the game paused
 	Empty       bool   // Start with empty world
+	Color       bool   // Color the cells based on age
 	Port        int    // Port to listen to
 	Host        string // Host IP to bind to
 	Server      bool   // Launch an API server when true
@@ -62,6 +63,7 @@ var cfg = cmdlineArgs{
 	PatternFile: "",
 	Pause:       false,
 	Empty:       false,
+	Color:       false,
 	Port:        3051,
 	Host:        "127.0.0.1",
 	Server:      false,
@@ -82,6 +84,7 @@ func parseArgs() {
 	flag.StringVar(&cfg.PatternFile, "pattern", cfg.PatternFile, "File with initial pattern to load")
 	flag.BoolVar(&cfg.Pause, "pause", cfg.Pause, "Start the game paused")
 	flag.BoolVar(&cfg.Empty, "empty", cfg.Empty, "Start with empty world")
+	flag.BoolVar(&cfg.Color, "color", cfg.Color, "Color cells based on age")
 	flag.IntVar(&cfg.Port, "port", cfg.Port, "Port to listen to")
 	flag.StringVar(&cfg.Host, "host", cfg.Host, "Host IP to bind to")
 	flag.BoolVar(&cfg.Server, "server", cfg.Server, "Launch an API server")
@@ -527,6 +530,22 @@ func (g *LifeGame) liveNeighbors(c *Cell) (int, int) {
 	return liveCount, 0
 }
 
+// SetColorFromAge uses the cell's age to color it
+func (g *LifeGame) SetColorFromAge(age int) {
+
+	// Based on the coloring algorithm used in Mazes for Programmers
+	// Except that I don't have a max distance here
+	maxAge := float64(255)
+	if float64(age) > maxAge {
+		age = 255
+	}
+
+	intensity := (maxAge - float64(age)) / maxAge
+	dark := uint8(255 * intensity)
+	bright := uint8(128 + 127*intensity)
+	g.renderer.SetDrawColor(dark, bright, dark, 255)
+}
+
 // Draw draws the current state of the world
 func (g *LifeGame) Draw(status string) {
 	// Clear the world to the background color
@@ -538,6 +557,9 @@ func (g *LifeGame) Draw(status string) {
 			c.alive = c.aliveNext
 			if !c.alive {
 				continue
+			}
+			if cfg.Color {
+				g.SetColorFromAge(c.age)
 			}
 			g.DrawCell(*c)
 		}
@@ -580,6 +602,9 @@ func (g *LifeGame) UpdateCell(x, y int, erase bool) {
 
 // UpdateStatus draws the status bar
 func (g *LifeGame) UpdateStatus(status string) {
+	if len(status) == 0 {
+		return
+	}
 	text, err := g.font.RenderUTF8Solid(status, sdl.Color{255, 255, 255, 255})
 	if err != nil {
 		log.Printf("Failed to render text: %s\n", err)
@@ -633,6 +658,7 @@ func (g *LifeGame) NextFrame() {
 func ShowKeysHelp() {
 	fmt.Println("h           - Print help")
 	fmt.Println("<space>     - Toggle pause/play")
+	fmt.Println("c           - Toggle color")
 	fmt.Println("q           - Quit")
 	fmt.Println("s           - Single step")
 	fmt.Println("r           - Reset the game")
@@ -667,6 +693,8 @@ func (g *LifeGame) Run() {
 						oneStep = true
 					case sdl.K_r:
 						g.InitializeCells()
+					case sdl.K_c:
+						cfg.Color = !cfg.Color
 					}
 
 				}
