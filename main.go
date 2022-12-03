@@ -20,7 +20,8 @@ import (
 )
 
 const (
-	threshold = 0.15
+	threshold   = 0.15
+	maxColorAge = 255
 )
 
 // RLE header with variable spacing and optional rules
@@ -102,6 +103,29 @@ type RGBAColor struct {
 	r, g, b, a uint8
 }
 
+// Gradient holds the colors to use for displaying cell age
+type Gradient struct {
+	controls []RGBAColor
+	points   []RGBAColor
+}
+
+// NewLinearGradient returns a Linear Gradient with pre-computed colors for every age
+func NewLinearGradient(controls []RGBAColor, maxAge int) Gradient {
+	// Use the first and last color in controls as start and end
+	gradient := Gradient{controls: []RGBAColor{controls[0], controls[len(controls)-1]}, points: make([]RGBAColor, maxAge)}
+
+	start := controls[0]
+	end := controls[1]
+
+	for t := 1; t <= maxAge; t++ {
+		r := uint8(start.r + uint8((float64(t)/float64(maxAge))*float64(end.r-start.r)))
+		g := uint8(start.g + uint8((float64(t)/float64(maxAge))*float64(end.g-start.g)))
+		b := uint8(start.b + uint8((float64(t)/float64(maxAge))*float64(end.b-start.b)))
+		gradient.points[t-1] = RGBAColor{r, g, b, 255}
+	}
+	return gradient
+}
+
 // Cell describes the location and state of a cell
 type Cell struct {
 	alive     bool
@@ -134,6 +158,7 @@ type LifeGame struct {
 	fg         RGBAColor
 	cellWidth  int32
 	cellHeight int32
+	gradient   Gradient
 	pChan      <-chan Pattern
 }
 
@@ -532,18 +557,11 @@ func (g *LifeGame) liveNeighbors(c *Cell) (int, int) {
 
 // SetColorFromAge uses the cell's age to color it
 func (g *LifeGame) SetColorFromAge(age int) {
-
-	// Based on the coloring algorithm used in Mazes for Programmers
-	// Except that I don't have a max distance here
-	maxAge := float64(255)
-	if float64(age) > maxAge {
-		age = 255
+	if age >= len(g.gradient.points) {
+		age = len(g.gradient.points) - 1
 	}
-
-	intensity := (maxAge - float64(age)) / maxAge
-	dark := uint8(255 * intensity)
-	bright := uint8(128 + 127*intensity)
-	g.renderer.SetDrawColor(dark, bright, dark, 255)
+	color := g.gradient.points[age]
+	g.renderer.SetDrawColor(color.r, color.g, color.b, color.a)
 }
 
 // Draw draws the current state of the world
@@ -787,6 +805,9 @@ func InitializeGame() *LifeGame {
 	}
 	game.cellWidth = int32(w)
 	game.cellHeight = int32(h)
+
+	// Build the color gradient
+	game.gradient = NewLinearGradient([]RGBAColor{RGBAColor{70, 130, 180, 255}, RGBAColor{255, 255, 255, 255}}, maxColorAge)
 
 	return game
 }
