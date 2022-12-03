@@ -106,6 +106,8 @@ type Cell struct {
 
 	x int
 	y int
+
+	age int
 }
 
 // Pattern is used to pass patterns from the API to the game
@@ -220,7 +222,19 @@ func (g *LifeGame) SetCellState(x, y int, alive bool) (int, int) {
 	g.cells[y][x].alive = alive
 	g.cells[y][x].aliveNext = alive
 
+	if !alive {
+		g.cells[y][x].age = 0
+	}
+
 	return x, y
+}
+
+// PrintCellDetails prints the details for a cell, located by the window coordinates x, y
+func (g *LifeGame) PrintCellDetails(x, y int32) {
+	cellX := int(x / g.cellWidth)
+	cellY := int(y / g.cellHeight)
+
+	log.Printf("%d, %d = %#v\n", cellX, cellY, g.cells[cellY][cellX])
 }
 
 // FillDead makes sure the rest of a line, width long, is filled with dead cells
@@ -453,19 +467,32 @@ func (g *LifeGame) ParseRLE(lines []string, x, y int) error {
 
 // checkState determines the state of the cell for the next tick of the game.
 func (g *LifeGame) checkState(c *Cell) {
-	liveCount := g.liveNeighbors(c)
+	liveCount, avgAge := g.liveNeighbors(c)
 	if c.alive {
 		// Stay alive if the number of neighbors is in stayAlive
 		_, c.aliveNext = g.stayAlive[liveCount]
 	} else {
 		// Birth a new cell if number of neighbors is in birth
 		_, c.aliveNext = g.birth[liveCount]
+
+		// New cells inherit their age from parents
+		// TODO make this optional
+		if c.aliveNext {
+			c.age = avgAge
+		}
+	}
+
+	if c.aliveNext {
+		c.age++
+	} else {
+		c.age = 0
 	}
 }
 
-// liveNeighbors returns the number of live neighbors for a cell.
-func (g *LifeGame) liveNeighbors(c *Cell) int {
+// liveNeighbors returns the number of live neighbors for a cell and their average age
+func (g *LifeGame) liveNeighbors(c *Cell) (int, int) {
 	var liveCount int
+	var ageSum int
 	add := func(x, y int) {
 		// If we're at an edge, check the other side of the board.
 		if y == len(g.cells) {
@@ -481,6 +508,7 @@ func (g *LifeGame) liveNeighbors(c *Cell) int {
 
 		if g.cells[y][x].alive {
 			liveCount++
+			ageSum += g.cells[y][x].age
 		}
 	}
 
@@ -493,7 +521,10 @@ func (g *LifeGame) liveNeighbors(c *Cell) int {
 	add(c.x-1, c.y-1) // bottom-left
 	add(c.x+1, c.y-1) // bottom-right
 
-	return liveCount
+	if liveCount > 0 {
+		return liveCount, int(ageSum / liveCount)
+	}
+	return liveCount, 0
 }
 
 // Draw draws the current state of the world
@@ -641,7 +672,8 @@ func (g *LifeGame) Run() {
 				}
 			case *sdl.MouseButtonEvent:
 				if t.GetType() == sdl.MOUSEBUTTONDOWN {
-					log.Printf("x=%d y=%d\n", t.X, t.Y)
+					// log.Printf("x=%d y=%d\n", t.X, t.Y)
+					g.PrintCellDetails(t.X, t.Y)
 				}
 			}
 		}
