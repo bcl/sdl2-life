@@ -34,3 +34,27 @@ func TestParseColorTriplets(t *testing.T) {
 		}
 	}
 }
+
+func TestFactorialCache(t *testing.T) {
+	var matrix = []struct {
+		input  int
+		output float64
+	}{
+		{0, 1},
+		{1, 1},
+		{2, 2},
+		{3, 6},
+		{4, 24},
+		{18, 6402373705728000},
+		{19, 121645100408832000},
+	}
+
+	fc := NewFactorialCache()
+
+	for _, tt := range matrix {
+		result := fc.Fact(tt.input)
+		if result != tt.output {
+			t.Errorf("expected %0.0f, got %0.0f", tt.output, result)
+		}
+	}
+}

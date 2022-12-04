@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"net/http"
 	"os"
@@ -113,12 +114,15 @@ type Gradient struct {
 }
 
 // NewLinearGradient returns a Linear Gradient with pre-computed colors for every age
-func NewLinearGradient(controls []RGBAColor, maxAge int) Gradient {
+// from https://bsouthga.dev/posts/color-gradients-with-python
+//
+// Only uses the first and last color passed in
+func NewLinearGradient(colors []RGBAColor, maxAge int) Gradient {
 	// Use the first and last color in controls as start and end
-	gradient := Gradient{controls: []RGBAColor{controls[0], controls[len(controls)-1]}, points: make([]RGBAColor, maxAge)}
+	gradient := Gradient{controls: []RGBAColor{colors[0], colors[len(colors)-1]}, points: make([]RGBAColor, maxAge)}
 
-	start := controls[0]
-	end := controls[1]
+	start := gradient.controls[0]
+	end := gradient.controls[1]
 
 	for t := 1; t <= maxAge; t++ {
 		r := uint8(start.r + uint8((float64(t)/float64(maxAge))*float64(end.r-start.r)))
@@ -126,6 +130,64 @@ func NewLinearGradient(controls []RGBAColor, maxAge int) Gradient {
 		b := uint8(start.b + uint8((float64(t)/float64(maxAge))*float64(end.b-start.b)))
 		gradient.points[t-1] = RGBAColor{r, g, b, 255}
 	}
+	return gradient
+}
+
+// FactorialCache saves the results for factorial calculations for faster access
+type FactorialCache struct {
+	cache map[int]float64
+}
+
+// NewFactorialCache returns a new empty cache
+func NewFactorialCache() *FactorialCache {
+	return &FactorialCache{cache: make(map[int]float64)}
+}
+
+// Fact calculates the n! and caches the results
+func (fc *FactorialCache) Fact(n int) float64 {
+	f, ok := fc.cache[n]
+	if ok {
+		return f
+	}
+	var result float64
+	if n == 1 || n == 0 {
+		result = 1
+	} else {
+		result = float64(n) * fc.Fact(n-1)
+	}
+
+	fc.cache[n] = result
+	return result
+}
+
+// Bernstein calculates the bernstein coefficient
+//
+// t runs from 0 -> 1 and is the 'position' on the curve (age / maxAge-1)
+// n is the number of control colors -1
+// i is the current control color from 0 -> n
+func (fc *FactorialCache) Bernstein(t float64, n, i int) float64 {
+	b := fc.Fact(n) / (fc.Fact(i) * fc.Fact(n-i))
+	b = b * math.Pow(1-t, float64(n-i)) * math.Pow(t, float64(i))
+	return b
+}
+
+// NewBezierGradient returns pre-computed colors using control colors and bezier curve
+// from https://bsouthga.dev/posts/color-gradients-with-python
+func NewBezierGradient(controls []RGBAColor, maxAge int) Gradient {
+	gradient := Gradient{controls: controls, points: make([]RGBAColor, maxAge)}
+	fc := NewFactorialCache()
+
+	for t := 0; t < maxAge; t++ {
+		color := RGBAColor{}
+		for i, c := range controls {
+			color.r += uint8(fc.Bernstein(float64(t)/float64(maxAge-1), len(controls)-1, i) * float64(c.r))
+			color.g += uint8(fc.Bernstein(float64(t)/float64(maxAge-1), len(controls)-1, i) * float64(c.g))
+			color.b += uint8(fc.Bernstein(float64(t)/float64(maxAge-1), len(controls)-1, i) * float64(c.b))
+		}
+		color.a = 255
+		gradient.points[t] = color
+	}
+
 	return gradient
 }
 
@@ -816,7 +878,8 @@ func InitializeGame() *LifeGame {
 	}
 
 	// Build the color gradient
-	game.gradient = NewLinearGradient(colors, maxColorAge)
+	//	game.gradient = NewLinearGradient(colors, maxColorAge)
+	game.gradient = NewBezierGradient(colors, maxColorAge)
 
 	return game
 }
