@@ -21,8 +21,13 @@ import (
 )
 
 const (
-	threshold   = 0.15
-	maxColorAge = 255
+	threshold = 0.15
+	// LinearGradient cmdline selection
+	LinearGradient = 0
+	// PolylinearGradient cmdline selection
+	PolylinearGradient = 1
+	// BezierGradient cmdline selection
+	BezierGradient = 2
 )
 
 // RLE header with variable spacing and optional rules
@@ -46,6 +51,8 @@ type cmdlineArgs struct {
 	Empty       bool   // Start with empty world
 	Color       bool   // Color the cells based on age
 	Colors      string // Comma separated color hex triplets
+	Gradient    int    // Gradient algorithm to use
+	MaxAge      int    // Maximum age for gradient colors
 	Port        int    // Port to listen to
 	Host        string // Host IP to bind to
 	Server      bool   // Launch an API server when true
@@ -68,6 +75,8 @@ var cfg = cmdlineArgs{
 	Empty:       false,
 	Color:       false,
 	Colors:      "#4682b4,#ffffff",
+	Gradient:    0,
+	MaxAge:      255,
 	Port:        3051,
 	Host:        "127.0.0.1",
 	Server:      false,
@@ -90,6 +99,8 @@ func parseArgs() {
 	flag.BoolVar(&cfg.Empty, "empty", cfg.Empty, "Start with empty world")
 	flag.BoolVar(&cfg.Color, "color", cfg.Color, "Color cells based on age")
 	flag.StringVar(&cfg.Colors, "colors", cfg.Colors, "Comma separated color hex triplets")
+	flag.IntVar(&cfg.Gradient, "gradient", cfg.Gradient, "Gradient type. 0=Linear 1=Polylinear 2=Bezier")
+	flag.IntVar(&cfg.MaxAge, "age", cfg.MaxAge, "Maximum age for gradient colors")
 	flag.IntVar(&cfg.Port, "port", cfg.Port, "Port to listen to")
 	flag.StringVar(&cfg.Host, "host", cfg.Host, "Host IP to bind to")
 	flag.BoolVar(&cfg.Server, "server", cfg.Server, "Launch an API server")
@@ -113,6 +124,21 @@ type Gradient struct {
 	points   []RGBAColor
 }
 
+// Print prints the gradient values to the console
+func (g *Gradient) Print() {
+	fmt.Printf("controls:\n%#v\n\n", g.controls)
+	for i := range g.points {
+		fmt.Printf("%d = %#v\n", i, g.points[i])
+	}
+}
+
+// Append adds the points from a gradient to this one at an insertion point
+func (g *Gradient) Append(from Gradient, start int) {
+	for i, p := range from.points {
+		g.points[start+i] = p
+	}
+}
+
 // NewLinearGradient returns a Linear Gradient with pre-computed colors for every age
 // from https://bsouthga.dev/posts/color-gradients-with-python
 //
@@ -124,12 +150,37 @@ func NewLinearGradient(colors []RGBAColor, maxAge int) Gradient {
 	start := gradient.controls[0]
 	end := gradient.controls[1]
 
-	for t := 1; t <= maxAge; t++ {
-		r := uint8(start.r + uint8((float64(t)/float64(maxAge))*float64(end.r-start.r)))
-		g := uint8(start.g + uint8((float64(t)/float64(maxAge))*float64(end.g-start.g)))
-		b := uint8(start.b + uint8((float64(t)/float64(maxAge))*float64(end.b-start.b)))
-		gradient.points[t-1] = RGBAColor{r, g, b, 255}
+	for t := 0; t < maxAge; t++ {
+		r := uint8(float64(start.r) + (float64(t)/float64(maxAge-1))*(float64(end.r)-float64(start.r)))
+		g := uint8(float64(start.g) + (float64(t)/float64(maxAge-1))*(float64(end.g)-float64(start.g)))
+		b := uint8(float64(start.b) + (float64(t)/float64(maxAge-1))*(float64(end.b)-float64(start.b)))
+		gradient.points[t] = RGBAColor{r, g, b, 255}
 	}
+	return gradient
+}
+
+// NewPolylinearGradient returns a gradient that is linear between all control colors
+func NewPolylinearGradient(colors []RGBAColor, maxAge int) Gradient {
+	// TODO check number of colors and return error if < 2
+	gradient := Gradient{controls: colors, points: make([]RGBAColor, maxAge)}
+
+	n := int(float64(maxAge) / float64(len(colors)-1))
+	gradient.Append(NewLinearGradient(colors, n), 0)
+
+	if len(colors) == 2 {
+		return gradient
+	}
+
+	for i := 1; i < len(colors)-1; i++ {
+		if i == len(colors)-2 {
+			// The last group may need to be extended if it doesn't fill all the way to the end
+			remainder := maxAge - ((i + 1) * n)
+			gradient.Append(NewLinearGradient(colors[i:i+1], n+remainder), (i * n))
+		} else {
+			gradient.Append(NewLinearGradient(colors[i:i+1], n), (i * n))
+		}
+	}
+
 	return gradient
 }
 
@@ -878,8 +929,14 @@ func InitializeGame() *LifeGame {
 	}
 
 	// Build the color gradient
-	//	game.gradient = NewLinearGradient(colors, maxColorAge)
-	game.gradient = NewBezierGradient(colors, maxColorAge)
+	switch cfg.Gradient {
+	case LinearGradient:
+		game.gradient = NewLinearGradient(colors, cfg.MaxAge)
+	case PolylinearGradient:
+		game.gradient = NewPolylinearGradient(colors, cfg.MaxAge)
+	case BezierGradient:
+		game.gradient = NewBezierGradient(colors, cfg.MaxAge)
+	}
 
 	return game
 }
