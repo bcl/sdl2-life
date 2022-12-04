@@ -44,6 +44,7 @@ type cmdlineArgs struct {
 	Pause       bool   // Start the game paused
 	Empty       bool   // Start with empty world
 	Color       bool   // Color the cells based on age
+	Colors      string // Comma separated color hex triplets
 	Port        int    // Port to listen to
 	Host        string // Host IP to bind to
 	Server      bool   // Launch an API server when true
@@ -65,6 +66,7 @@ var cfg = cmdlineArgs{
 	Pause:       false,
 	Empty:       false,
 	Color:       false,
+	Colors:      "#4682b4,#ffffff",
 	Port:        3051,
 	Host:        "127.0.0.1",
 	Server:      false,
@@ -86,6 +88,7 @@ func parseArgs() {
 	flag.BoolVar(&cfg.Pause, "pause", cfg.Pause, "Start the game paused")
 	flag.BoolVar(&cfg.Empty, "empty", cfg.Empty, "Start with empty world")
 	flag.BoolVar(&cfg.Color, "color", cfg.Color, "Color cells based on age")
+	flag.StringVar(&cfg.Colors, "colors", cfg.Colors, "Comma separated color hex triplets")
 	flag.IntVar(&cfg.Port, "port", cfg.Port, "Port to listen to")
 	flag.StringVar(&cfg.Host, "host", cfg.Host, "Host IP to bind to")
 	flag.BoolVar(&cfg.Server, "server", cfg.Server, "Launch an API server")
@@ -806,10 +809,49 @@ func InitializeGame() *LifeGame {
 	game.cellWidth = int32(w)
 	game.cellHeight = int32(h)
 
+	// Parse the hex triplets
+	colors, err := ParseColorTriplets(cfg.Colors)
+	if err != nil {
+		log.Fatalf("Problem parsing colors: %s", err)
+	}
+
 	// Build the color gradient
-	game.gradient = NewLinearGradient([]RGBAColor{RGBAColor{70, 130, 180, 255}, RGBAColor{255, 255, 255, 255}}, maxColorAge)
+	game.gradient = NewLinearGradient(colors, maxColorAge)
 
 	return game
+}
+
+// ParseColorTriplets parses color hex values into an array
+// like ffffff,000000 or #ffffff,#000000 or #ffffff#000000
+func ParseColorTriplets(s string) ([]RGBAColor, error) {
+
+	// Remove leading # if present
+	s = strings.TrimPrefix(s, "#")
+	// Replace ,# combinations with just ,
+	s = strings.ReplaceAll(s, ",#", ",")
+	// Replace # alone with ,
+	s = strings.ReplaceAll(s, "#", ",")
+
+	var colors []RGBAColor
+	// Convert the tuples into RGBAColor
+	for _, c := range strings.Split(s, ",") {
+		r, err := strconv.ParseUint(c[:2], 16, 8)
+		if err != nil {
+			return colors, err
+		}
+		g, err := strconv.ParseUint(c[2:4], 16, 8)
+		if err != nil {
+			return colors, err
+		}
+		b, err := strconv.ParseUint(c[4:6], 16, 8)
+		if err != nil {
+			return colors, err
+		}
+
+		colors = append(colors, RGBAColor{uint8(r), uint8(g), uint8(b), 255})
+	}
+
+	return colors, nil
 }
 
 // Parse digits into a map of ints from 0-9
