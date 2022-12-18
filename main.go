@@ -143,7 +143,11 @@ func (g *Gradient) Append(from Gradient, start int) {
 // from https://bsouthga.dev/posts/color-gradients-with-python
 //
 // Only uses the first and last color passed in
-func NewLinearGradient(colors []RGBAColor, maxAge int) Gradient {
+func NewLinearGradient(colors []RGBAColor, maxAge int) (Gradient, error) {
+	if len(colors) < 2 {
+		return Gradient{}, fmt.Errorf("Linear Gradient requires 2 colors")
+	}
+
 	// Use the first and last color in controls as start and end
 	gradient := Gradient{controls: []RGBAColor{colors[0], colors[len(colors)-1]}, points: make([]RGBAColor, maxAge)}
 
@@ -156,32 +160,38 @@ func NewLinearGradient(colors []RGBAColor, maxAge int) Gradient {
 		b := uint8(float64(start.b) + (float64(t)/float64(maxAge-1))*(float64(end.b)-float64(start.b)))
 		gradient.points[t] = RGBAColor{r, g, b, 255}
 	}
-	return gradient
+	return gradient, nil
 }
 
 // NewPolylinearGradient returns a gradient that is linear between all control colors
-func NewPolylinearGradient(colors []RGBAColor, maxAge int) Gradient {
-	// TODO check number of colors and return error if < 2
+func NewPolylinearGradient(colors []RGBAColor, maxAge int) (Gradient, error) {
+	if len(colors) < 2 {
+		return Gradient{}, fmt.Errorf("Polylinear Gradient requires at least 2 colors")
+	}
+
 	gradient := Gradient{controls: colors, points: make([]RGBAColor, maxAge)}
 
 	n := int(float64(maxAge) / float64(len(colors)-1))
-	gradient.Append(NewLinearGradient(colors, n), 0)
+	g, _ := NewLinearGradient(colors, n)
+	gradient.Append(g, 0)
 
 	if len(colors) == 2 {
-		return gradient
+		return gradient, nil
 	}
 
 	for i := 1; i < len(colors)-1; i++ {
 		if i == len(colors)-2 {
 			// The last group may need to be extended if it doesn't fill all the way to the end
 			remainder := maxAge - ((i + 1) * n)
-			gradient.Append(NewLinearGradient(colors[i:i+1], n+remainder), (i * n))
+			g, _ := NewLinearGradient(colors[i:i+1], n+remainder)
+			gradient.Append(g, (i * n))
 		} else {
-			gradient.Append(NewLinearGradient(colors[i:i+1], n), (i * n))
+			g, _ := NewLinearGradient(colors[i:i+1], n)
+			gradient.Append(g, (i * n))
 		}
 	}
 
-	return gradient
+	return gradient, nil
 }
 
 // FactorialCache saves the results for factorial calculations for faster access
@@ -931,9 +941,15 @@ func InitializeGame() *LifeGame {
 	// Build the color gradient
 	switch cfg.Gradient {
 	case LinearGradient:
-		game.gradient = NewLinearGradient(colors, cfg.MaxAge)
+		game.gradient, err = NewLinearGradient(colors, cfg.MaxAge)
+		if err != nil {
+			log.Fatalf("ERROR: %s", err)
+		}
 	case PolylinearGradient:
-		game.gradient = NewPolylinearGradient(colors, cfg.MaxAge)
+		game.gradient, err = NewPolylinearGradient(colors, cfg.MaxAge)
+		if err != nil {
+			log.Fatalf("ERROR: %s", err)
+		}
 	case BezierGradient:
 		game.gradient = NewBezierGradient(colors, cfg.MaxAge)
 	}
