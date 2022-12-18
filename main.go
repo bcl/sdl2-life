@@ -144,8 +144,8 @@ func (g *Gradient) Append(from Gradient, start int) {
 //
 // Only uses the first and last color passed in
 func NewLinearGradient(colors []RGBAColor, maxAge int) (Gradient, error) {
-	if len(colors) < 2 {
-		return Gradient{}, fmt.Errorf("Linear Gradient requires 2 colors")
+	if len(colors) < 1 {
+		return Gradient{}, fmt.Errorf("Linear Gradient requires at least 1 color")
 	}
 
 	// Use the first and last color in controls as start and end
