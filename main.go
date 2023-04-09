@@ -388,6 +388,12 @@ func (g *LifeGame) PrintCellDetails(x, y int32) {
 	cellX := int(x / g.cellWidth)
 	cellY := int(y / g.cellHeight)
 
+	if cellX > cfg.Columns || cellY > cfg.Rows {
+		log.Printf("ERROR: x=%d mapped to %d\n", x, cellX)
+		log.Printf("ERROR: y=%d mapped to %d\n", y, cellY)
+		return
+	}
+
 	log.Printf("%d, %d = %#v\n", cellX, cellY, g.cells[cellY][cellX])
 }
 
@@ -847,6 +853,26 @@ func (g *LifeGame) Run() {
 					// log.Printf("x=%d y=%d\n", t.X, t.Y)
 					g.PrintCellDetails(t.X, t.Y)
 				}
+			case *sdl.MouseMotionEvent:
+				if t.GetType() == sdl.MOUSEMOTION {
+					fmt.Printf("Motion Event (%d): ", t.Which)
+					g.PrintCellDetails(t.X, t.Y)
+				}
+
+			case *sdl.MouseWheelEvent:
+				if t.GetType() == sdl.MOUSEWHEEL {
+					fmt.Printf("Wheel Event (%d): ", t.Which)
+					g.PrintCellDetails(t.X, t.Y)
+			}
+
+			case *sdl.MultiGestureEvent:
+				if t.GetType() == sdl.MULTIGESTURE {
+					fmt.Printf("x=%0.2f y=%0.2f fingers=%d pinch=%0.2f rotate=%0.2f\n", t.X, t.Y, t.NumFingers, t.DDist, t.DTheta)
+				}
+			case *sdl.TouchFingerEvent:
+				if t.GetType() == sdl.FINGERDOWN {
+					fmt.Printf("x=%02.f y=%02.f dx=%02.f dy=%0.2f pressure=%0.2f\n", t.X, t.Y, t.DX, t.DY, t.Pressure)
+				}
 			}
 		}
 		// Delay a small amount
@@ -999,12 +1025,12 @@ func parseDigits(digits string) (map[int]bool, error) {
 	var errors bool
 	var err error
 	var value int
-	if value, err = strconv.Atoi(digits); err != nil {
-		log.Printf("%s must be digits from 0-9\n", digits)
+	if len(digits) > 10 {
+		log.Printf("%d has more than 10 digits", value)
 		errors = true
 	}
-	if value > 9999999999 {
-		log.Printf("%d has more than 10 digits", value)
+	if value, err = strconv.Atoi(digits); err != nil {
+		log.Printf("%s must be digits from 0-9\n", digits)
 		errors = true
 	}
 	if errors {
