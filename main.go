@@ -38,8 +38,7 @@ var rleHeaderRegex = regexp.MustCompile(`x\s*=\s*(\d+)\s*,\s*y\s*=\s*(\d+)(?:\s*
 type cmdlineArgs struct {
 	Width       int    // Width of window in pixels
 	Height      int    // Height of window in pixels
-	Rows        int    // Number of cell rows
-	Columns     int    // Number of cell columns
+	CellSize    int    // Cell size in pixels (square)
 	Seed        int64  // Seed for PRNG
 	Border      bool   // Border around cells
 	Font        string // Path to TTF to use for status bar
@@ -56,14 +55,15 @@ type cmdlineArgs struct {
 	Port        int    // Port to listen to
 	Host        string // Host IP to bind to
 	Server      bool   // Launch an API server when true
+	Rotate      int    // Screen rotation: 0, 90, 180, 270
+	StatusTop   bool   // Place status text at the top instead of bottom
 }
 
 /* commandline defaults */
 var cfg = cmdlineArgs{
 	Width:       500,
 	Height:      500,
-	Rows:        100,
-	Columns:     100,
+	CellSize:    5,
 	Seed:        0,
 	Border:      false,
 	Font:        "",
@@ -80,14 +80,15 @@ var cfg = cmdlineArgs{
 	Port:        3051,
 	Host:        "127.0.0.1",
 	Server:      false,
+	Rotate:      0,
+	StatusTop:   false,
 }
 
 /* parseArgs handles parsing the cmdline args and setting values in the global cfg struct */
 func parseArgs() {
 	flag.IntVar(&cfg.Width, "width", cfg.Width, "Width of window in pixels")
 	flag.IntVar(&cfg.Height, "height", cfg.Height, "Height of window in pixels")
-	flag.IntVar(&cfg.Rows, "rows", cfg.Rows, "Number of cell rows")
-	flag.IntVar(&cfg.Columns, "columns", cfg.Columns, "Number of cell columns")
+	flag.IntVar(&cfg.CellSize, "cell", cfg.CellSize, "Cell size in pixels (square)")
 	flag.Int64Var(&cfg.Seed, "seed", cfg.Seed, "PRNG seed")
 	flag.BoolVar(&cfg.Border, "border", cfg.Border, "Border around cells")
 	flag.StringVar(&cfg.Font, "font", cfg.Font, "Path to TTF to use for status bar")
@@ -104,8 +105,14 @@ func parseArgs() {
 	flag.IntVar(&cfg.Port, "port", cfg.Port, "Port to listen to")
 	flag.StringVar(&cfg.Host, "host", cfg.Host, "Host IP to bind to")
 	flag.BoolVar(&cfg.Server, "server", cfg.Server, "Launch an API server")
+	flag.IntVar(&cfg.Rotate, "rotate", cfg.Rotate, "Rotate screen by 0°, 90°, 180°, or 270°")
+	flag.BoolVar(&cfg.StatusTop, "status-top", cfg.StatusTop, "Status text at the top")
 
 	flag.Parse()
+
+	if cfg.Rotate != 0 && cfg.Rotate != 90 && cfg.Rotate != 180 && cfg.Rotate != 270 {
+		log.Fatal("-rotate only supports 0, 90, 180, and 270")
+	}
 }
 
 // Possible default fonts to search for
@@ -277,15 +284,15 @@ type LifeGame struct {
 	stayAlive map[int]bool
 
 	// Graphics
-	window     *sdl.Window
-	renderer   *sdl.Renderer
-	font       *ttf.Font
-	bg         RGBAColor
-	fg         RGBAColor
-	cellWidth  int32
-	cellHeight int32
-	gradient   Gradient
-	pChan      <-chan Pattern
+	window   *sdl.Window
+	renderer *sdl.Renderer
+	font     *ttf.Font
+	bg       RGBAColor
+	fg       RGBAColor
+	rows     int
+	columns  int
+	gradient Gradient
+	pChan    <-chan Pattern
 }
 
 // cleanup will handle cleanup of allocated resources
@@ -304,9 +311,9 @@ func (g *LifeGame) InitializeCells() {
 	g.age = 0
 
 	// Fill it with dead cells first
-	g.cells = make([][]*Cell, cfg.Rows, cfg.Columns)
-	for y := 0; y < cfg.Rows; y++ {
-		for x := 0; x < cfg.Columns; x++ {
+	g.cells = make([][]*Cell, g.rows, g.columns)
+	for y := 0; y < g.rows; y++ {
+		for x := 0; x < g.columns; x++ {
 			c := &Cell{x: x, y: y}
 			g.cells[y] = append(g.cells[y], c)
 		}
@@ -360,10 +367,10 @@ func (g *LifeGame) InitializeCells() {
 func (g *LifeGame) TranslateXY(x, y int) (int, int) {
 	// Move x, y to center of field and wrap at the edges
 	// NOTE: % in go preserves sign of a, unlike Python :)
-	x = cfg.Columns/2 + x
-	x = (x%cfg.Columns + cfg.Columns) % cfg.Columns
-	y = cfg.Rows/2 + y
-	y = (y%cfg.Rows + cfg.Rows) % cfg.Rows
+	x = g.columns/2 + x
+	x = (x%g.columns + g.columns) % g.columns
+	y = g.rows/2 + y
+	y = (y%g.rows + g.rows) % g.rows
 
 	return x, y
 }
@@ -371,8 +378,8 @@ func (g *LifeGame) TranslateXY(x, y int) (int, int) {
 // SetCellState sets the cell alive state
 // it also wraps the x and y at the edges and returns the new value
 func (g *LifeGame) SetCellState(x, y int, alive bool) (int, int) {
-	x = x % cfg.Columns
-	y = y % cfg.Rows
+	x = x % g.columns
+	y = y % g.rows
 	g.cells[y][x].alive = alive
 	g.cells[y][x].aliveNext = alive
 
@@ -385,10 +392,10 @@ func (g *LifeGame) SetCellState(x, y int, alive bool) (int, int) {
 
 // PrintCellDetails prints the details for a cell, located by the window coordinates x, y
 func (g *LifeGame) PrintCellDetails(x, y int32) {
-	cellX := int(x / g.cellWidth)
-	cellY := int(y / g.cellHeight)
+	cellX := int(x) / cfg.CellSize
+	cellY := int(y) / cfg.CellSize
 
-	if cellX > cfg.Columns || cellY > cfg.Rows {
+	if cellX >= g.columns || cellY >= g.rows {
 		log.Printf("ERROR: x=%d mapped to %d\n", x, cellX)
 		log.Printf("ERROR: y=%d mapped to %d\n", y, cellY)
 		return
@@ -424,8 +431,8 @@ func (g *LifeGame) InitializeRandomCells() {
 		rand.Seed(cfg.Seed)
 	}
 
-	for y := 0; y < cfg.Rows; y++ {
-		for x := 0; x < cfg.Columns; x++ {
+	for y := 0; y < g.rows; y++ {
+		for x := 0; x < g.columns; x++ {
 			g.SetCellState(x, y, rand.Float64() < threshold)
 		}
 	}
@@ -509,8 +516,8 @@ func (g *LifeGame) ParsePlaintext(lines []string) error {
 	var x, y int
 
 	// Move x, y to center of field
-	x = cfg.Columns / 2
-	y = cfg.Rows / 2
+	x = g.columns / 2
+	y = g.rows / 2
 
 	for _, line := range lines {
 		if strings.HasPrefix(line, "!") {
@@ -724,12 +731,12 @@ func (g *LifeGame) Draw(status string) {
 
 // DrawCell draws a new cell on an empty background
 func (g *LifeGame) DrawCell(c Cell) {
-	x := int32(c.x) * g.cellWidth
-	y := int32(c.y) * g.cellHeight
+	x := int32(c.x * cfg.CellSize)
+	y := int32(c.y * cfg.CellSize)
 	if cfg.Border {
-		g.renderer.FillRect(&sdl.Rect{x + 1, y + 1, g.cellWidth - 2, g.cellHeight - 2})
+		g.renderer.FillRect(&sdl.Rect{x + 1, y + 1, int32(cfg.CellSize - 2), int32(cfg.CellSize - 2)})
 	} else {
-		g.renderer.FillRect(&sdl.Rect{x, y, g.cellWidth, g.cellHeight})
+		g.renderer.FillRect(&sdl.Rect{x, y, int32(cfg.CellSize), int32(cfg.CellSize)})
 	}
 }
 
@@ -776,7 +783,7 @@ func (g *LifeGame) UpdateStatus(status string) {
 	}
 
 	x := int32((cfg.Width - w) / 2)
-	rect := &sdl.Rect{x, int32(cfg.Height + 2), int32(w), int32(h)}
+	rect := &sdl.Rect{x, int32(cfg.Height - 2 - h), int32(w), int32(h)}
 	if err = g.renderer.Copy(texture, nil, rect); err != nil {
 		log.Printf("Failed to copy texture: %s\n", err)
 		return
@@ -863,7 +870,7 @@ func (g *LifeGame) Run() {
 				if t.GetType() == sdl.MOUSEWHEEL {
 					fmt.Printf("Wheel Event (%d): ", t.Which)
 					g.PrintCellDetails(t.X, t.Y)
-			}
+				}
 
 			case *sdl.MultiGestureEvent:
 				if t.GetType() == sdl.MULTIGESTURE {
@@ -905,6 +912,21 @@ func (g *LifeGame) Run() {
 	}
 }
 
+// CalculateWorldSize determines the most rows/columns to fit the world
+func (g *LifeGame) CalculateWorldSize() {
+	if cfg.Rotate == 0 || cfg.Rotate == 180 {
+		// The status text is subtracted from the height
+		g.columns = cfg.Width / cfg.CellSize
+		g.rows = (cfg.Height - 4 - g.font.Height()) / cfg.CellSize
+	} else if cfg.Rotate == 90 || cfg.Rotate == 270 {
+		// The status text is subtracted from the width
+		g.columns = (cfg.Width - 4 - g.font.Height()) / cfg.CellSize
+		g.rows = cfg.Height / cfg.CellSize
+	} else {
+		log.Fatal("Unsupported rotate value")
+	}
+}
+
 // InitializeGame sets up the game struct and the SDL library
 // It also creates the main window
 func InitializeGame() *LifeGame {
@@ -932,7 +954,7 @@ func InitializeGame() *LifeGame {
 		sdl.WINDOWPOS_UNDEFINED,
 		sdl.WINDOWPOS_UNDEFINED,
 		int32(cfg.Width),
-		int32(cfg.Height+4+game.font.Height()),
+		int32(cfg.Height),
 		sdl.WINDOW_SHOWN)
 	if err != nil {
 		log.Fatalf("Problem initializing SDL window: %s", err)
@@ -947,16 +969,8 @@ func InitializeGame() *LifeGame {
 	game.bg = RGBAColor{0, 0, 0, 255}
 	game.fg = RGBAColor{255, 255, 255, 255}
 
-	// Calculate square cell size, take into account --border selection
-	w := cfg.Width / cfg.Columns
-	h := cfg.Height / cfg.Rows
-	if w < h {
-		h = w
-	} else {
-		w = h
-	}
-	game.cellWidth = int32(w)
-	game.cellHeight = int32(h)
+	// Calculate the number of rows and columns that will fit
+	game.CalculateWorldSize()
 
 	// Parse the hex triplets
 	colors, err := ParseColorTriplets(cfg.Colors)
