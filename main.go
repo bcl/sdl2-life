@@ -731,19 +731,28 @@ func (g *LifeGame) Draw(status string) {
 
 // DrawCell draws a new cell on an empty background
 func (g *LifeGame) DrawCell(c Cell) {
-	var y int32
+	var x, y int32
 	if cfg.Rotate == 0 {
 		if cfg.StatusTop {
 			y = int32(c.y*cfg.CellSize + 4 + g.font.Height())
 		} else {
 			y = int32(c.y * cfg.CellSize)
 		}
-		x := int32(c.x * cfg.CellSize)
-		if cfg.Border {
-			g.renderer.FillRect(&sdl.Rect{x + 1, y + 1, int32(cfg.CellSize - 2), int32(cfg.CellSize - 2)})
+		x = int32(c.x * cfg.CellSize)
+	} else if cfg.Rotate == 180 {
+		// Invert top and bottom
+		if cfg.StatusTop {
+			y = int32(c.y * cfg.CellSize)
 		} else {
-			g.renderer.FillRect(&sdl.Rect{x, y, int32(cfg.CellSize), int32(cfg.CellSize)})
+			y = int32(c.y*cfg.CellSize + 4 + g.font.Height())
 		}
+		x = int32(c.x * cfg.CellSize)
+	}
+
+	if cfg.Border {
+		g.renderer.FillRect(&sdl.Rect{x + 1, y + 1, int32(cfg.CellSize - 2), int32(cfg.CellSize - 2)})
+	} else {
+		g.renderer.FillRect(&sdl.Rect{x, y, int32(cfg.CellSize), int32(cfg.CellSize)})
 	}
 }
 
@@ -800,6 +809,20 @@ func (g *LifeGame) UpdateStatus(status string) {
 		x := int32((cfg.Width - w) / 2)
 		rect := &sdl.Rect{x, y, int32(w), int32(h)}
 		if err = g.renderer.Copy(texture, nil, rect); err != nil {
+			log.Printf("Failed to copy texture: %s\n", err)
+			return
+		}
+	} else if cfg.Rotate == 180 {
+		var y int32
+		if cfg.StatusTop {
+			y = int32(cfg.Height - 2 - h)
+		} else {
+			y = 2
+		}
+
+		x := int32((cfg.Width - w) / 2)
+		rect := &sdl.Rect{x, y, int32(w), int32(h)}
+		if err = g.renderer.CopyEx(texture, nil, rect, 0.0, nil, sdl.FLIP_HORIZONTAL|sdl.FLIP_VERTICAL); err != nil {
 			log.Printf("Failed to copy texture: %s\n", err)
 			return
 		}
