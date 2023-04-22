@@ -311,7 +311,7 @@ func (g *LifeGame) InitializeCells() {
 	g.age = 0
 
 	// Fill it with dead cells first
-	g.cells = make([][]*Cell, g.rows, g.columns)
+	g.cells = make([][]*Cell, g.rows)
 	for y := 0; y < g.rows; y++ {
 		for x := 0; x < g.columns; x++ {
 			c := &Cell{x: x, y: y}
@@ -747,6 +747,20 @@ func (g *LifeGame) DrawCell(c Cell) {
 			y = int32(c.y*cfg.CellSize + 4 + g.font.Height())
 		}
 		x = int32(c.x * cfg.CellSize)
+	} else if cfg.Rotate == 90 {
+		if cfg.StatusTop {
+			x = int32(c.x*cfg.CellSize + 4 + g.font.Height())
+		} else {
+			x = int32(c.x * cfg.CellSize)
+		}
+		y = int32(c.y * cfg.CellSize)
+	} else if cfg.Rotate == 270 {
+		if cfg.StatusTop {
+			x = int32(c.x * cfg.CellSize)
+		} else {
+			x = int32(c.x*cfg.CellSize + 4 + g.font.Height())
+		}
+		y = int32(c.y * cfg.CellSize)
 	}
 
 	if cfg.Border {
@@ -823,6 +837,34 @@ func (g *LifeGame) UpdateStatus(status string) {
 		x := int32((cfg.Width - w) / 2)
 		rect := &sdl.Rect{x, y, int32(w), int32(h)}
 		if err = g.renderer.CopyEx(texture, nil, rect, 0.0, nil, sdl.FLIP_HORIZONTAL|sdl.FLIP_VERTICAL); err != nil {
+			log.Printf("Failed to copy texture: %s\n", err)
+			return
+		}
+	} else if cfg.Rotate == 90 {
+		var x int32
+		if cfg.StatusTop {
+			x = int32(2 + h)
+		} else {
+			x = int32(cfg.Width)
+		}
+
+		y := int32((cfg.Height - w) / 2)
+		rect := &sdl.Rect{x, y, int32(w), int32(h)}
+		if err = g.renderer.CopyEx(texture, nil, rect, 90.0, &sdl.Point{0, 0}, sdl.FLIP_HORIZONTAL|sdl.FLIP_VERTICAL); err != nil {
+			log.Printf("Failed to copy texture: %s\n", err)
+			return
+		}
+	} else if cfg.Rotate == 270 {
+		var x int32
+		if cfg.StatusTop {
+			x = int32(cfg.Width)
+		} else {
+			x = int32(2 + h)
+		}
+
+		y := int32((cfg.Height - w) / 2)
+		rect := &sdl.Rect{x, y, int32(w), int32(h)}
+		if err = g.renderer.CopyEx(texture, nil, rect, 90.0, &sdl.Point{0, 0}, sdl.FLIP_NONE); err != nil {
 			log.Printf("Failed to copy texture: %s\n", err)
 			return
 		}
