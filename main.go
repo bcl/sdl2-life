@@ -940,6 +940,8 @@ func (g *LifeGame) Run() {
 				if t.GetType() == sdl.MOUSEBUTTONDOWN {
 					// log.Printf("x=%d y=%d\n", t.X, t.Y)
 					g.PrintCellDetails(t.X, t.Y)
+
+					g.InitializeRandomCells()
 				}
 			case *sdl.MouseMotionEvent:
 				if t.GetType() == sdl.MOUSEMOTION {
