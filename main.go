@@ -1008,6 +1008,8 @@ func (g *LifeGame) CalculateWorldSize() {
 	} else {
 		log.Fatal("Unsupported rotate value")
 	}
+
+	fmt.Printf("World is %d columns x %d rows\n", g.columns, g.rows)
 }
 
 // InitializeGame sets up the game struct and the SDL library
@@ -1147,7 +1149,6 @@ func parseDigits(digits string) (map[int]bool, error) {
 //
 // Rulestrings are of the form Bn.../Sn... which list the number of neighbors to birth a new one,
 // and the number of neighbors to stay alive.
-//
 func ParseRulestring(rule string) (birth map[int]bool, stayAlive map[int]bool, e error) {
 	var errors bool
 
