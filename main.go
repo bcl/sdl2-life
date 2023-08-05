@@ -1022,6 +1022,9 @@ func InitializeGame() *LifeGame {
 		log.Fatalf("Problem initializing SDL: %s", err)
 	}
 
+	// Turn off the mouse cursor
+	sdl.ShowCursor(sdl.DISABLE)
+
 	if err = ttf.Init(); err != nil {
 		log.Fatalf("Failed to initialize TTF: %s\n", err)
 	}
