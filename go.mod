@@ -1,5 +1,5 @@
 module github.com/bcl/sdl2-life
 
-go 1.19
+go 1.15
 
 require github.com/veandco/go-sdl2 v0.4.27
